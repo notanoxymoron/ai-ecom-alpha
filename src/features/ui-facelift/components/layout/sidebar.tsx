@@ -12,12 +12,14 @@ import {
   AlertTriangle,
   Sparkles,
   User,
+  Bot,
 } from "lucide-react";
 import { useAppStore } from "@/shared/lib/store";
 
 const navItems = [
   { href: "/", label: "Ad Feed", icon: LayoutDashboard },
   { href: "/discover", label: "Discover", icon: Search },
+  { href: "/openclaw", label: "OpenClaw", icon: Bot },
   { href: "/generate", label: "Generate", icon: Zap },
   { href: "/knowledge-base", label: "Knowledge Base", icon: BookOpen },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },

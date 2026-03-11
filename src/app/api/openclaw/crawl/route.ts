@@ -1,0 +1,57 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  crawlMetaAdLibrary,
+  crawlTikTokTopAds,
+  scrapeLandingPage,
+} from "@/features/openclaw/lib/openclaw-client";
+import type { CrawlOptions } from "@/features/openclaw/types";
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const {
+      source,
+      query,
+      options = {},
+    } = body as {
+      source: "meta_ad_library" | "tiktok_top_ads" | "landing_page";
+      query: string;
+      options?: CrawlOptions;
+    };
+
+    if (!source || !query) {
+      return NextResponse.json(
+        { error: "source and query are required" },
+        { status: 400 }
+      );
+    }
+
+    let task;
+    switch (source) {
+      case "meta_ad_library":
+        task = await crawlMetaAdLibrary(query, options);
+        break;
+      case "tiktok_top_ads":
+        task = await crawlTikTokTopAds(query, options);
+        break;
+      case "landing_page":
+        task = await scrapeLandingPage(query);
+        break;
+      default:
+        return NextResponse.json(
+          { error: `Invalid source: ${source}` },
+          { status: 400 }
+        );
+    }
+
+    return NextResponse.json({
+      taskId: task.task_id,
+      status: task.status,
+      source,
+      query,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
