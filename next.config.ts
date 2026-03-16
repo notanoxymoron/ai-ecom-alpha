@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+  serverExternalPackages: ["apify-client"],
 };
 
 export default nextConfig;

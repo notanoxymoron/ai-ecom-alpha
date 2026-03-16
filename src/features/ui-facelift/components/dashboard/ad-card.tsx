@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { getWinnerTier, getWinnerTierColor, getWinnerTierLabel } from "@/shared/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import { formatDate } from "@/shared/lib/utils";
-import { Sparkles, Search, ExternalLink, Clock } from "lucide-react";
+import { Sparkles, Search, ExternalLink, Clock, Play } from "lucide-react";
 
 interface AdCardProps {
   ad: ForeplayAd;
@@ -20,12 +21,22 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate }: AdCardProp
   const days = ad.running_duration?.days ?? 0;
   const tier = getWinnerTier(days);
   const imageUrl = ad.image || ad.thumbnail;
+  const hasVideo = !!ad.video;
+  const [isPlaying, setIsPlaying] = useState(false);
 
   return (
     <Card className="overflow-hidden group hover:border-primary/30 transition-colors">
-      {/* Image */}
+      {/* Image / Video */}
       <div className="relative aspect-[4/5] bg-muted overflow-hidden">
-        {imageUrl ? (
+        {isPlaying && ad.video ? (
+          <video
+            src={ad.video}
+            controls
+            autoPlay
+            className="w-full h-full object-cover"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : imageUrl ? (
           <Image
             src={imageUrl}
             alt={ad.name || "Ad"}
@@ -40,17 +51,32 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate }: AdCardProp
           </div>
         )}
 
-        {/* Overlay buttons */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-          <Button size="sm" onClick={() => onAnalyze(ad)}>
-            <Search className="h-3.5 w-3.5 mr-1.5" />
-            Analyze
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => onDuplicate(ad)} className="bg-black/50">
-            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-            Duplicate
-          </Button>
-        </div>
+        {/* Overlay buttons — hidden while video is playing */}
+        {!isPlaying && (
+          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            {hasVideo && (
+              <Button size="sm" variant="outline" onClick={() => setIsPlaying(true)} className="bg-black/50">
+                <Play className="h-3.5 w-3.5 mr-1.5" />
+                Play
+              </Button>
+            )}
+            <Button size="sm" onClick={() => onAnalyze(ad)}>
+              <Search className="h-3.5 w-3.5 mr-1.5" />
+              Analyze
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => onDuplicate(ad)} className="bg-black/50">
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              Duplicate
+            </Button>
+          </div>
+        )}
+
+        {/* Persistent play badge when video exists and not playing */}
+        {hasVideo && !isPlaying && (
+          <div className="absolute bottom-2 right-2 bg-black/70 rounded-full p-1.5 pointer-events-none">
+            <Play className="h-3 w-3 text-white fill-white" />
+          </div>
+        )}
 
         {/* Winner badge */}
         {tier && (

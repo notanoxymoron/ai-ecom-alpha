@@ -44,9 +44,16 @@ export async function POST(request: NextRequest) {
         );
     }
 
+    const mappedStatus =
+      task.status === "queued"
+        ? "pending"
+        : task.status === "in_progress"
+        ? "running"
+        : task.status;
+
     return NextResponse.json({
       taskId: task.task_id,
-      status: task.status,
+      status: mappedStatus,
       source,
       query,
     });

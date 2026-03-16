@@ -1,5 +1,6 @@
 # dependencies
 node_modules/
+docs/
 
 # next.js
 .next/
@@ -23,6 +24,7 @@ yarn-error.log*
 # misc
 .DS_Store
 *.pem
+DC-key.pem
 
 # typescript
 *.tsbuildinfo
@@ -31,3 +33,6 @@ next-env.d.ts
 # IDE
 .vscode/
 .idea/
+
+# dev scratch scripts
+test-crawler*.ts

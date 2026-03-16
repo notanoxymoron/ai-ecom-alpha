@@ -1,150 +1,114 @@
+import { ApifyClient } from "apify-client";
 import type { OpenClawAgentTask, CrawlOptions } from "../types";
 
-const OPENCLAW_URL = process.env.OPENCLAW_API_URL || "http://localhost:3100";
-
-async function openclawFetch<T>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
-  const url = `${OPENCLAW_URL}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`OpenClaw API error ${res.status}: ${body}`);
+// Initialize Apify client (requires APIFY_API_TOKEN in .env.local)
+function getApifyClient() {
+  const token = process.env.APIFY_API_TOKEN;
+  if (!token) {
+    throw new Error("Missing APIFY_API_TOKEN in environment variables");
   }
-
-  return res.json() as Promise<T>;
+  return new ApifyClient({ token });
 }
 
-// --- Meta Ad Library Crawl ---
+export async function getCrawlStatus(taskId: string): Promise<OpenClawAgentTask> {
+  if (!process.env.APIFY_API_TOKEN) {
+    return { task_id: taskId, status: "failed", error: "Missing APIFY_API_TOKEN in .env.local" };
+  }
 
-const META_AD_LIBRARY_PROMPT = `You are a competitor intelligence agent. Your task is to search the Meta Ad Library for ads related to the following query.
+  try {
+    const client = getApifyClient();
+    const run = await client.run(taskId).get();
+    
+    if (!run) {
+      return { task_id: taskId, status: "failed", error: "Apify run not found" };
+    }
 
-INSTRUCTIONS:
-1. Go to https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q={query}
-2. Wait for results to load
-3. For each ad found (up to {maxResults}), extract:
-   - Advertiser name
-   - Ad text/copy (primary text)
-   - Image URL (if image ad)
-   - Video URL (if video ad)
-   - Landing page URL (from CTA button)
-   - Start date
-   - Whether it's currently active
-   - Platform (Facebook, Instagram, etc.)
-4. Return results as a JSON array
+    // Map Apify statuses to our UI statuses
+    const statusMap: Record<string, OpenClawAgentTask["status"]> = {
+      "READY": "queued",
+      "RUNNING": "in_progress",
+      "SUCCEEDED": "completed",
+      "FAILED": "failed",
+      "TIMING-OUT": "failed",
+      "ABORTING": "failed",
+      "ABORTED": "failed",
+    };
 
-Return ONLY valid JSON array with objects having these fields:
-[{"advertiserName": "", "adText": "", "imageUrl": "", "videoUrl": "", "landingPageUrl": "", "startDate": "", "isActive": true, "platform": []}]`;
+    const agentTask: OpenClawAgentTask = {
+      task_id: taskId,
+      status: statusMap[run.status] || "failed",
+    };
+
+    if (run.status === "SUCCEEDED" && run.defaultDatasetId) {
+      const dataset = await client.dataset(run.defaultDatasetId).listItems();
+      agentTask.result = JSON.stringify(dataset.items);
+    } else if (run.status === "FAILED") {
+      agentTask.error = "Apify actor run failed";
+    }
+
+    return agentTask;
+  } catch (error) {
+    return {
+      task_id: taskId,
+      status: "failed",
+      error: error instanceof Error ? error.message : "Failed to fetch Apify status",
+    };
+  }
+}
+
+// --- Meta Ad Library Crawl (Apify) ---
 
 export async function crawlMetaAdLibrary(
   query: string,
   options: CrawlOptions = {}
 ): Promise<OpenClawAgentTask> {
+  const client = getApifyClient();
   const maxResults = options.maxResults ?? 20;
-  const country = options.country ?? "US";
 
-  const prompt = META_AD_LIBRARY_PROMPT.replace("{query}", query)
-    .replace("{maxResults}", String(maxResults))
-    .replace("country=US", `country=${country}`);
-
-  return openclawFetch<OpenClawAgentTask>("/api/agent/task", {
-    method: "POST",
-    body: JSON.stringify({
-      prompt,
-      tools: ["browser_control", "web_fetch"],
-      timeout: 120,
-    }),
+  // We provide redundant input keys to cover common Apify Facebook Scraper schema variations.
+  // The 'dz_omar/facebook-ads-scraper-pro' actor will use the ones it recognizes.
+  const run = await client.actor("dz_omar/facebook-ads-scraper-pro").start({
+    searchQueries: [query],
+    maxAds: maxResults,
+    country: options.country ?? "US",
+    proxyConfiguration: {
+      useApifyProxy: true,
+    },
   });
+
+  return { task_id: run.id, status: "queued" };
 }
 
-// --- TikTok Top Ads Crawl ---
-
-const TIKTOK_ADS_PROMPT = `You are a competitor intelligence agent. Your task is to find top-performing TikTok ads related to the following query.
-
-INSTRUCTIONS:
-1. Go to https://ads.tiktok.com/business/creativecenter/inspiration/topads/pc/en
-2. Search for: "{query}"
-3. Sort by performance/engagement
-4. For each ad found (up to {maxResults}), extract:
-   - Advertiser name
-   - Ad text/caption
-   - Video thumbnail URL
-   - Video URL (if accessible)
-   - Landing page URL
-   - Engagement metrics (likes, shares, comments)
-   - Whether it's currently running
-5. Return results as a JSON array
-
-Return ONLY valid JSON array with objects having these fields:
-[{"advertiserName": "", "adText": "", "imageUrl": "", "videoUrl": "", "landingPageUrl": "", "isActive": true, "platform": ["tiktok"], "engagement": {"likes": 0, "shares": 0, "comments": 0}}]`;
+// --- TikTok Top Ads Crawl (Apify) ---
 
 export async function crawlTikTokTopAds(
   query: string,
   options: CrawlOptions = {}
 ): Promise<OpenClawAgentTask> {
+  const client = getApifyClient();
   const maxResults = options.maxResults ?? 20;
 
-  const prompt = TIKTOK_ADS_PROMPT.replace("{query}", query).replace(
-    "{maxResults}",
-    String(maxResults)
-  );
+  const tiktokAllowedRegions = new Set(["FR","AT","BE","BG","HR","CY","CZ","DK","EE","FI","DE","GR","HU","IS","IE","IT","LV","LI","LT","LU","MT","NL","NO","PL","PT","RO","SK","SI","ES","SE","CH","TR","GB"]);
+  const region = options.country && tiktokAllowedRegions.has(options.country) ? options.country : "all";
 
-  return openclawFetch<OpenClawAgentTask>("/api/agent/task", {
-    method: "POST",
-    body: JSON.stringify({
-      prompt,
-      tools: ["browser_control", "web_fetch"],
-      timeout: 120,
-    }),
+  const run = await client.actor("zadexinho/tiktok-ads-scraper").start({
+    searchQuery: query,
+    maxResults: maxResults,
+    fetchDetails: true,
+    region,
+    proxyConfiguration: {
+      useApifyProxy: true,
+    },
   });
+
+  return { task_id: run.id, status: "queued" };
 }
 
 // --- Landing Page Scrape ---
 
-const LANDING_PAGE_PROMPT = `You are a marketing intelligence analyst. Analyze the following landing page and extract key conversion elements.
-
-URL: {url}
-
-Use web_fetch to get the page content, then extract:
-1. Main headline
-2. Subheadline (if any)
-3. Primary CTA text and button text
-4. Special offers or discounts mentioned
-5. Social proof elements (testimonials, ratings, user counts, trust badges)
-6. Price points mentioned
-
-Return ONLY valid JSON:
-{"headline": "", "subheadline": "", "cta": "", "offers": [], "socialProof": [], "pricePoints": []}`;
-
 export async function scrapeLandingPage(
   url: string
 ): Promise<OpenClawAgentTask> {
-  const prompt = LANDING_PAGE_PROMPT.replace("{url}", url);
-
-  return openclawFetch<OpenClawAgentTask>("/api/agent/task", {
-    method: "POST",
-    body: JSON.stringify({
-      prompt,
-      tools: ["web_fetch"],
-      timeout: 60,
-    }),
-  });
-}
-
-// --- Task Status ---
-
-export async function getCrawlStatus(
-  taskId: string
-): Promise<OpenClawAgentTask> {
-  return openclawFetch<OpenClawAgentTask>(
-    `/api/agent/task/${encodeURIComponent(taskId)}`
-  );
+  // Placeholder for landing page scraping (e.g., using JSDOM/Cheerio or Apify's Web Scraper)
+  throw new Error("Landing page scraping via Apify is not yet implemented.");
 }

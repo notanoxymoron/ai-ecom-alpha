@@ -4,13 +4,12 @@ import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CrawlLauncher } from "@/features/openclaw/components/crawl-launcher";
 import { CrawlStatusCard } from "@/features/openclaw/components/crawl-status-card";
-import { LandingPageIntelCard } from "@/features/openclaw/components/landing-page-intel";
 import { AdCard } from "@/features/ui-facelift/components/dashboard/ad-card";
 import { AnalysisModal } from "@/features/ui-facelift/components/dashboard/analysis-modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Button } from "@/shared/components/ui/button";
 import { useAppStore } from "@/shared/lib/store";
-import type { CrawlTask, LandingPageIntel } from "@/features/openclaw/types";
+import type { CrawlTask } from "@/features/openclaw/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import type { AdAnalysis } from "@/shared/types";
 import { useRouter } from "next/navigation";
@@ -23,7 +22,6 @@ export default function OpenClawPage() {
   const [isLaunching, setIsLaunching] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [analyzingAd, setAnalyzingAd] = useState<ForeplayAd | null>(null);
-  const [landingPageIntel, setLandingPageIntel] = useState<LandingPageIntel | null>(null);
 
   // Poll status for running tasks
   const runningTasks = crawlTasks.filter(
@@ -43,11 +41,15 @@ export default function OpenClawPage() {
             const data = await res.json();
 
             if (data.status === "completed" || data.status === "failed") {
+              if (data.status === "completed") {
+                setSelectedTaskId(task.id);
+              }
               return {
                 ...task,
                 status: data.status as CrawlTask["status"],
                 completedAt: new Date().toISOString(),
                 error: data.error || undefined,
+                resultCount: data.resultCount || 0,
               };
             }
             return { ...task, status: data.status as CrawlTask["status"] };
@@ -88,7 +90,9 @@ export default function OpenClawPage() {
     enabled: !!selectedTaskId && selectedTask?.status === "completed",
   });
 
-  const resultAds: ForeplayAd[] = resultsData?.foreplayCompatible ?? [];
+  const resultAds: ForeplayAd[] = (resultsData?.foreplayCompatible ?? []).filter(
+    (ad: ForeplayAd) => ad.image || ad.thumbnail || ad.video
+  );
 
   const handleStartCrawl = async (
     source: string,
@@ -97,25 +101,15 @@ export default function OpenClawPage() {
   ) => {
     setIsLaunching(true);
     try {
-      // Handle landing page differently
-      if (source === "landing_page") {
-        const res = await fetch("/api/openclaw/landing-page", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: query }),
-        });
-        if (!res.ok) throw new Error("Failed to scrape landing page");
-        const intel = await res.json();
-        setLandingPageIntel(intel);
-        return;
-      }
-
       const res = await fetch("/api/openclaw/crawl", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source, query, options }),
       });
-      if (!res.ok) throw new Error("Failed to start crawl");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to start crawl");
+      }
       const data = await res.json();
 
       const newTask: CrawlTask = {
@@ -148,7 +142,6 @@ export default function OpenClawPage() {
 
   const handleViewResults = (taskId: string) => {
     setSelectedTaskId(taskId);
-    setLandingPageIntel(null);
   };
 
   const handleDuplicate = useCallback(
@@ -181,9 +174,6 @@ export default function OpenClawPage() {
 
       {/* Crawl Launcher */}
       <CrawlLauncher onStartCrawl={handleStartCrawl} isLoading={isLaunching} />
-
-      {/* Landing Page Intel */}
-      {landingPageIntel && <LandingPageIntelCard intel={landingPageIntel} />}
 
       {/* Crawl Tasks */}
       {crawlTasks.length > 0 && (
@@ -250,13 +240,12 @@ export default function OpenClawPage() {
       )}
 
       {/* Empty State */}
-      {crawlTasks.length === 0 && !landingPageIntel && (
+      {crawlTasks.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Bot className="h-12 w-12 text-muted-foreground/30 mb-4" />
           <h3 className="text-lg font-medium">No Crawls Yet</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-md">
-            Launch a crawl above to scrape the Meta Ad Library, TikTok Top Ads,
-            or analyze a competitor&apos;s landing page.
+          <p className="text-sm text-muted-foreground mt-1 whitespace-nowrap">
+            Launch a crawl above to scrape the Meta Ad Library or TikTok Top Ads.
           </p>
         </div>
       )}

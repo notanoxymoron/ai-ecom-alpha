@@ -4,120 +4,142 @@ import { useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
-import { Card, CardContent, CardHeader } from "@/shared/components/ui/card";
-import { Search, Globe, Play } from "lucide-react";
+import { Search, Play } from "lucide-react";
 import { Spinner } from "@/shared/components/ui/spinner";
+
+const NICHE_OPTIONS = [
+  "beauty",
+  "fashion",
+  "health",
+  "food",
+  "technology",
+  "travel",
+  "fitness",
+  "home",
+  "pets",
+  "finance",
+  "education",
+];
 
 interface CrawlLauncherProps {
   onStartCrawl: (source: string, query: string, options: Record<string, unknown>) => void;
   isLoading: boolean;
 }
 
+const META_COUNTRIES = [
+  { value: "US", label: "United States" },
+  { value: "GB", label: "United Kingdom" },
+  { value: "CA", label: "Canada" },
+  { value: "AU", label: "Australia" },
+  { value: "DE", label: "Germany" },
+  { value: "FR", label: "France" },
+  { value: "ALL", label: "All Countries" },
+];
+
+const TIKTOK_COUNTRIES = [
+  { value: "ALL", label: "All Countries" },
+  { value: "GB", label: "United Kingdom" },
+  { value: "DE", label: "Germany" },
+  { value: "FR", label: "France" },
+  { value: "IT", label: "Italy" },
+  { value: "ES", label: "Spain" },
+  { value: "NL", label: "Netherlands" },
+  { value: "SE", label: "Sweden" },
+  { value: "PL", label: "Poland" },
+  { value: "TR", label: "Turkey" },
+];
+
 export function CrawlLauncher({ onStartCrawl, isLoading }: CrawlLauncherProps) {
   const [source, setSource] = useState("meta_ad_library");
   const [query, setQuery] = useState("");
-  const [maxResults, setMaxResults] = useState("20");
+  const [niche, setNiche] = useState("");
+  const [maxResults, setMaxResults] = useState("10");
   const [country, setCountry] = useState("US");
+
+  const countryOptions = source === "tiktok_top_ads" ? TIKTOK_COUNTRIES : META_COUNTRIES;
+
+  const handleSourceChange = (newSource: string) => {
+    setSource(newSource);
+    setCountry(newSource === "tiktok_top_ads" ? "ALL" : "US");
+  };
 
   const handleSubmit = () => {
     if (!query.trim()) return;
     onStartCrawl(source, query.trim(), {
       maxResults: Number(maxResults),
       country,
+      niche,
     });
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Play className="h-4 w-4 text-primary" />
-          Launch Crawl
-        </h3>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <Select
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              className="w-48"
-            >
-              <option value="meta_ad_library">Meta Ad Library</option>
-              <option value="tiktok_top_ads">TikTok Top Ads</option>
-              <option value="landing_page">Landing Page</option>
-            </Select>
+    <div className="flex items-center gap-3">
+      <Select
+        value={source}
+        onChange={(e) => handleSourceChange(e.target.value)}
+        className="w-40"
+      >
+        <option value="meta_ad_library">Meta Ad Library</option>
+        <option value="tiktok_top_ads">TikTok Top Ads</option>
+      </Select>
 
-            <div className="relative flex-1">
-              {source === "landing_page" ? (
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              ) : (
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              )}
-              <Input
-                placeholder={
-                  source === "landing_page"
-                    ? "Enter URL to scrape..."
-                    : "Search keyword or brand name..."
-                }
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                className="pl-9"
-              />
-            </div>
-          </div>
+      <div className="relative flex-1">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search keyword or brand name..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          className="pl-9"
+        />
+      </div>
 
-          {source !== "landing_page" && (
-            <div className="flex items-center gap-3">
-              <Select
-                value={maxResults}
-                onChange={(e) => setMaxResults(e.target.value)}
-                className="w-36"
-              >
-                <option value="10">10 results</option>
-                <option value="20">20 results</option>
-                <option value="30">30 results</option>
-                <option value="50">50 results</option>
-              </Select>
+      <Select value={niche} onChange={(e) => setNiche(e.target.value)} className="w-36">
+        <option value="">All Niches</option>
+        {NICHE_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {n.charAt(0).toUpperCase() + n.slice(1)}
+          </option>
+        ))}
+      </Select>
 
-              {source === "meta_ad_library" && (
-                <Select
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className="w-36"
-                >
-                  <option value="US">United States</option>
-                  <option value="GB">United Kingdom</option>
-                  <option value="CA">Canada</option>
-                  <option value="AU">Australia</option>
-                  <option value="DE">Germany</option>
-                  <option value="FR">France</option>
-                  <option value="ALL">All Countries</option>
-                </Select>
-              )}
-            </div>
-          )}
+      <Select
+        value={maxResults}
+        onChange={(e) => setMaxResults(e.target.value)}
+        className="w-32"
+      >
+        <option value="10">10 results</option>
+        <option value="20">20 results</option>
+        <option value="30">30 results</option>
+        <option value="50">50 results</option>
+      </Select>
 
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading || !query.trim()}
-            className="w-fit"
-          >
-            {isLoading ? (
-              <>
-                <Spinner className="h-4 w-4 mr-2" />
-                Launching...
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                Start Crawl
-              </>
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <Select
+        value={country}
+        onChange={(e) => setCountry(e.target.value)}
+        className="w-36"
+      >
+        {countryOptions.map((c) => (
+          <option key={c.value} value={c.value}>{c.label}</option>
+        ))}
+      </Select>
+
+      <Button
+        onClick={handleSubmit}
+        disabled={isLoading || !query.trim()}
+      >
+        {isLoading ? (
+          <>
+            <Spinner className="h-4 w-4 mr-2" />
+            Launching...
+          </>
+        ) : (
+          <>
+            <Play className="h-4 w-4 mr-2" />
+            Start Crawl
+          </>
+        )}
+      </Button>
+    </div>
   );
 }

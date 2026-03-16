@@ -35,13 +35,23 @@ export async function GET(request: NextRequest) {
       taskId,
       source || "meta"
     );
-    const foreplayCompatible = scrapedAds.map(scrapedAdToForeplayAd);
+    const foreplayCompatible = scrapedAds
+      .map(scrapedAdToForeplayAd)
+      .sort((a, b) => (b.running_duration?.days ?? 0) - (a.running_duration?.days ?? 0));
+
+    // DEBUG: expose first raw item to identify field names
+    let rawSample: Record<string, unknown> | null = null;
+    try {
+      const rawItems = JSON.parse(task.result);
+      if (Array.isArray(rawItems) && rawItems.length > 0) rawSample = rawItems[0];
+    } catch {}
 
     return NextResponse.json({
       status: "completed",
       ads: scrapedAds,
       foreplayCompatible,
       totalResults: scrapedAds.length,
+      _debug_rawSample: rawSample,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

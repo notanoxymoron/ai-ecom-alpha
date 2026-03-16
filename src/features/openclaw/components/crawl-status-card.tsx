@@ -9,10 +9,24 @@ import {
   Loader2,
   Clock,
   Search,
-  Globe,
-  MonitorPlay,
 } from "lucide-react";
 import { timeAgo } from "@/shared/lib/utils";
+
+function MetaIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2.04c-5.5 0-10 4.49-10 10.02 0 5 3.66 9.15 8.44 9.9v-7H7.9v-2.9h2.54V9.85c0-2.51 1.49-3.89 3.78-3.89 1.09 0 2.23.19 2.23.19v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.45 2.9h-2.33v7a10 10 0 0 0 8.44-9.9c0-5.53-4.5-10.02-10-10.02z" />
+    </svg>
+  );
+}
+
+function TikTokIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.32 6.32 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.69a8.18 8.18 0 0 0 4.78 1.52V6.75a4.85 4.85 0 0 1-1.01-.06z" />
+    </svg>
+  );
+}
 
 interface CrawlStatusCardProps {
   task: CrawlTask;
@@ -22,13 +36,13 @@ interface CrawlStatusCardProps {
 const SOURCE_CONFIG = {
   meta_ad_library: {
     label: "Meta Ad Library",
-    icon: Globe,
+    icon: MetaIcon,
     color: "text-blue-400",
     bgColor: "bg-blue-500/10",
   },
   tiktok_top_ads: {
     label: "TikTok Top Ads",
-    icon: MonitorPlay,
+    icon: TikTokIcon,
     color: "text-pink-400",
     bgColor: "bg-pink-500/10",
   },
@@ -69,7 +83,7 @@ const STATUS_CONFIG = {
 
 export function CrawlStatusCard({ task, onViewResults }: CrawlStatusCardProps) {
   const sourceConfig = SOURCE_CONFIG[task.source];
-  const statusConfig = STATUS_CONFIG[task.status];
+  const statusConfig = STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
   const SourceIcon = sourceConfig.icon;
   const StatusIcon = statusConfig.icon;
 
