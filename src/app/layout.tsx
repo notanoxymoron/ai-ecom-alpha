@@ -1,7 +1,22 @@
 import type { Metadata } from "next";
+import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { Providers } from "./providers";
-import { Sidebar } from "@/features/ui-facelift/components/layout/sidebar";
+import { AppShell } from "@/features/ui-facelift/components/layout/app-shell";
 import "./globals.css";
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+  weight: ["400", "500"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+  weight: ["400", "500"],
+});
 
 export const metadata: Metadata = {
   title: "Genie OS",
@@ -17,12 +32,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body suppressHydrationWarning>
         <Providers>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 ml-64 bg-black min-h-screen">
-              <div className="p-6 max-w-[1600px] mx-auto">{children}</div>
-            </main>
-          </div>
+          <AppShell>{children}</AppShell>
         </Providers>
       </body>
     </html>

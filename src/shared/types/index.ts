@@ -151,15 +151,20 @@ export function getWinnerTierColor(tier: WinnerTier | null): string {
   }
 }
 
+/**
+ * Human-readable label for each tier.
+ * All labels are data-driven — they reflect how long the ad has
+ * actually been running, not editorial opinion.
+ *
+ *  proven    = 30+ days — proven spend efficiency
+ *  strong    = 14–29 days — strong early signal
+ *  potential = 7–13 days — in its first active week
+ */
 export function getWinnerTierLabel(tier: WinnerTier | null): string {
   switch (tier) {
-    case "proven":
-      return "Proven Winner";
-    case "strong":
-      return "Strong Performer";
-    case "potential":
-      return "Potential Winner";
-    default:
-      return "New";
+    case "proven":   return "Proven Winner";   // 30+ days running
+    case "strong":   return "Strong Signal";   // 14–29 days
+    case "potential": return "Early Traction"; // 7–13 days
+    default:         return "";
   }
 }

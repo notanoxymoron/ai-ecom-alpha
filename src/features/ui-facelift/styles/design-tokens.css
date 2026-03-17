@@ -1,0 +1,142 @@
+/* ============================================================
+   Genie OS Design System — Design Tokens
+   Source of truth: instructions.md
+   Import this file in globals.css via @import
+   ============================================================ */
+
+@theme {
+  /* ===== SIDEBAR — dark ===== */
+  --color-sidebar-bg: #0F1117;
+  --color-sidebar-surface: #181A22;
+  --color-sidebar-border: rgba(255, 255, 255, 0.06);
+  --color-sidebar-text: #B0AFA8;            /* 8.58:1 on sidebar-bg */
+  --color-sidebar-text-muted: #807F79;       /* 4.70:1 on sidebar-bg */
+  --color-sidebar-text-active: #FFFFFF;      /* 18.87:1 */
+  --color-sidebar-accent: #7C6BF0;          /* 4.69:1 on sidebar-bg */
+  --color-sidebar-accent-muted: rgba(124, 107, 240, 0.10);
+  --color-sidebar-hover: rgba(255, 255, 255, 0.04);
+
+  /* ===== CONTENT — light ===== */
+  --color-content-bg: #F6F5F2;
+  --color-card-bg: #FFFFFF;
+  --color-card-border: rgba(0, 0, 0, 0.06);
+  --color-card-hover: #FAFAF8;
+  --color-text-primary: #18181B;             /* 17.72:1 on white */
+  --color-text-secondary: #52525B;           /* 7.73:1 on white, 7.09:1 on content-bg */
+  --color-text-tertiary: #78776F;            /* 4.50:1 on white, 4.13:1 on content-bg */
+  --color-text-link: #5B4ACF;               /* 5.79:1 on content-bg */
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+  --border-default: rgba(0, 0, 0, 0.10);
+  --color-border-default: rgba(0, 0, 0, 0.10);
+
+  /* ===== ACCENT ===== */
+  --color-accent: #6C5CE7;                   /* 4.86:1 on white */
+  --color-accent-hover: #5A4BD6;
+  --color-accent-muted: rgba(108, 92, 231, 0.08);
+
+  /* ===== SEMANTIC — performance states ===== */
+  /* "Winning" = positive metric, scale signal, approved */
+  --color-winning: #10B981;                  /* decorative only (charts, dots) */
+  --color-winning-bg: #ECFDF5;              /* badge/tag background */
+  --color-winning-text: #047857;             /* 5.48:1 on white, 5.21:1 on winning-bg */
+
+  /* "Losing" = negative metric, kill signal, rejected */
+  --color-losing: #EF4444;                   /* decorative only */
+  --color-losing-bg: #FEF2F2;
+  --color-losing-text: #B91C1C;              /* 6.47:1 on white, 5.91:1 on losing-bg */
+
+  /* "Testing" = in review, pending, needs attention */
+  --color-testing: #F59E0B;                  /* decorative only */
+  --color-testing-bg: #FFF8EB;
+  --color-testing-text: #B45309;             /* 5.02:1 on white, 4.75:1 on testing-bg */
+
+  /* "Info" = neutral information, links */
+  --color-info: #3B82F6;                     /* decorative only */
+  --color-info-bg: #EFF6FF;
+  --color-info-text: #2563EB;               /* 5.17:1 on white, 4.75:1 on info-bg */
+
+  /* ===== LAYOUT ===== */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 56px;
+
+  /* ===== TYPOGRAPHY ===== */
+  --font-sans: 'DM Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+
+  /* ===== SHADCN / RADIX COMPATIBILITY ALIASES =====
+     Maps old Shadcn CSS-variable utility classes used across pages
+     (text-muted-foreground, border-border, bg-muted, bg-primary, etc.)
+     to the correct design token values so they render properly in light mode
+     without having to rewrite every page individually.
+     ================================================= */
+
+  /* Text */
+  --color-foreground:             #18181B;              /* text-foreground            */
+  --color-muted-foreground:       #52525B;              /* text-muted-foreground      */
+  --color-primary:                #6C5CE7;              /* text-primary, bg-primary   */
+  --color-primary-foreground:     #FFFFFF;              /* text-primary-foreground    */
+  --color-destructive:            #EF4444;              /* text-destructive, bg-destructive */
+  --color-destructive-foreground: #FFFFFF;              /* text-destructive-foreground */
+  --color-secondary:              #52525B;              /* text-secondary             */
+  --color-secondary-foreground:   #18181B;
+
+  /* Backgrounds */
+  --color-background:             #F6F5F2;              /* bg-background              */
+  --color-muted:                  #F6F5F2;              /* bg-muted                   */
+  --color-card:                   #FFFFFF;              /* bg-card                    */
+  --color-card-foreground:        #18181B;              /* text-card-foreground       */
+  --color-popover:                #FFFFFF;              /* bg-popover                 */
+  --color-popover-foreground:     #18181B;
+
+  /* Borders & rings */
+  --color-border:                 rgba(0, 0, 0, 0.10);  /* border-border              */
+  --color-input:                  rgba(0, 0, 0, 0.06);  /* border-input               */
+  --color-ring:                   #6C5CE7;              /* ring-ring, focus-visible   */
+}
+
+body {
+  background-color: var(--color-content-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px; /* default as per instructions */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.animate-pulse {
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
