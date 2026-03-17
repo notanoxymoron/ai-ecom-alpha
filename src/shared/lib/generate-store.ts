@@ -4,15 +4,19 @@ import { create } from "zustand";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import type { AdAnalysis } from "@/shared/types";
 import type { GenerationOverrides } from "@/lib/generation/generator";
+import type { AdMediaType } from "./media";
 
 export type GenerateStep = "select" | "analyze" | "configure" | "generate" | "review";
 
 export interface GeneratedVariation {
   id: string;
-  imageDataUrl: string;
+  mediaType: AdMediaType;
+  assetUrl: string;
   label: string;
   aspectRatio: string;
-  status: "generating" | "completed" | "approved" | "rejected";
+  mimeType?: string;
+  remoteJobId?: string;
+  status: "queued" | "generating" | "completed" | "approved" | "rejected";
 }
 
 interface GenerateSessionState {

@@ -7,7 +7,8 @@ import { Card } from "@/shared/components/ui/card";
 import { getWinnerTier, getWinnerTierColor, getWinnerTierLabel } from "@/shared/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import { formatDate } from "@/shared/lib/utils";
-import { Sparkles, Search, ExternalLink, Clock } from "lucide-react";
+import { getAdMediaType } from "@/shared/lib/media";
+import { Sparkles, Search, ExternalLink, Clock, Film } from "lucide-react";
 
 interface AdCardProps {
   ad: ForeplayAd;
@@ -20,6 +21,7 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate }: AdCardProp
   const days = ad.running_duration?.days ?? 0;
   const tier = getWinnerTier(days);
   const imageUrl = ad.image || ad.thumbnail;
+  const mediaType = getAdMediaType(ad);
 
   return (
     <Card className="overflow-hidden group hover:border-primary/30 transition-colors">
@@ -66,6 +68,15 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate }: AdCardProp
           <div className="absolute top-2 right-2">
             <Badge className="bg-primary/20 text-primary border-primary/30">
               {analysisScore}/10
+            </Badge>
+          </div>
+        )}
+
+        {mediaType === "video" && (
+          <div className="absolute bottom-2 left-2">
+            <Badge className="bg-black/70 text-white border-white/10">
+              <Film className="mr-1 h-3 w-3" />
+              Video
             </Badge>
           </div>
         )}

@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader } from "@/shared/components/ui/card";
 import type { AdAnalysis } from "@/shared/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import { useAppStore } from "@/shared/lib/store";
-import { X, Sparkles, Copy } from "lucide-react";
+import { getAdMediaType, getPrimaryCreativeUrl, isImageAnalysis, isVideoAnalysis } from "@/shared/lib/media";
+import { X, Sparkles, Copy, Film } from "lucide-react";
 import Image from "next/image";
 
 interface AnalysisModalProps {
@@ -32,19 +33,24 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
   });
 
   const runAnalysis = async () => {
-    if (!openaiKey) {
+    const isVideoAd = getAdMediaType(ad) === "video";
+    if (!isVideoAd && !openaiKey) {
       setError("Please enter your OpenAI API key");
       return;
     }
-    localStorage.setItem("openai_api_key", openaiKey);
+    if (!isVideoAd) {
+      localStorage.setItem("openai_api_key", openaiKey);
+    }
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch("/api/analyze", {
+      const res = await fetch(isVideoAd ? "/api/video-remix/analyze" : "/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad, brandProfile, openaiApiKey: openaiKey }),
+        body: JSON.stringify(
+          isVideoAd ? { ad, brandProfile } : { ad, brandProfile, openaiApiKey: openaiKey }
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed");
@@ -59,7 +65,8 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
     }
   };
 
-  const imageUrl = ad.image || ad.thumbnail;
+  const mediaType = getAdMediaType(ad);
+  const creativeUrl = getPrimaryCreativeUrl(ad);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
@@ -78,9 +85,19 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
         <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Ad preview */}
           <div className="space-y-4">
-            {imageUrl && (
+            {creativeUrl && (
               <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-muted">
-                <Image src={imageUrl} alt="" fill className="object-cover" unoptimized />
+                {mediaType === "video" && ad.video ? (
+                  <video
+                    src={ad.video}
+                    poster={ad.thumbnail || undefined}
+                    controls
+                    playsInline
+                    className="h-full w-full object-cover bg-black"
+                  />
+                ) : (
+                  <Image src={creativeUrl} alt="" fill className="object-cover" unoptimized />
+                )}
               </div>
             )}
             {ad.description && (
@@ -97,21 +114,25 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
             {!analysis && !loading && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Analyze this ad with GPT-4o Vision to understand why it converts.
+                  {mediaType === "video"
+                    ? "Analyze this video ad with Gemini to understand its hook, scenes, pacing, and CTA structure."
+                    : "Analyze this ad with GPT-4o Vision to understand why it converts."}
                 </p>
-                <div className="space-y-2">
-                  <label className="text-xs text-muted-foreground">OpenAI API Key</label>
-                  <Input
-                    type="password"
-                    placeholder="sk-..."
-                    value={openaiKey}
-                    onChange={(e) => setOpenaiKey(e.target.value)}
-                  />
-                </div>
+                {mediaType !== "video" && (
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground">OpenAI API Key</label>
+                    <Input
+                      type="password"
+                      placeholder="sk-..."
+                      value={openaiKey}
+                      onChange={(e) => setOpenaiKey(e.target.value)}
+                    />
+                  </div>
+                )}
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <Button onClick={runAnalysis}>
                   <Sparkles className="h-4 w-4 mr-2" />
-                  Analyze Ad
+                  {mediaType === "video" ? "Analyze Video" : "Analyze Ad"}
                 </Button>
               </div>
             )}
@@ -119,7 +140,9 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
             {loading && (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
                 <Spinner className="h-8 w-8" />
-                <p className="text-sm text-muted-foreground">Analyzing with GPT-4o Vision...</p>
+                <p className="text-sm text-muted-foreground">
+                  {mediaType === "video" ? "Analyzing with Gemini..." : "Analyzing with GPT-4o Vision..."}
+                </p>
               </div>
             )}
 
@@ -136,58 +159,98 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
                   </div>
                 </div>
 
-                {/* Hook */}
-                <Card>
-                  <CardHeader><h3 className="text-sm font-semibold">Hook</h3></CardHeader>
-                  <CardContent className="space-y-1">
-                    <p className="text-sm font-medium">&ldquo;{analysis.conversionElements.hook.text}&rdquo;</p>
-                    <div className="flex gap-2">
-                      <Badge>{analysis.conversionElements.hook.type}</Badge>
-                      <Badge variant="outline">{analysis.conversionElements.hook.effectivenessScore}/10</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{analysis.conversionElements.hook.whyItWorks}</p>
-                  </CardContent>
-                </Card>
-
-                {/* Visual */}
-                <Card>
-                  <CardHeader><h3 className="text-sm font-semibold">Visual Hierarchy</h3></CardHeader>
-                  <CardContent className="space-y-1 text-xs text-muted-foreground">
-                    <p><span className="text-foreground font-medium">Layout:</span> {analysis.conversionElements.visualHierarchy.layoutType}</p>
-                    <p><span className="text-foreground font-medium">Focal point:</span> {analysis.conversionElements.visualHierarchy.focalPoint}</p>
-                    <p><span className="text-foreground font-medium">Flow:</span> {analysis.conversionElements.visualHierarchy.visualFlow}</p>
-                  </CardContent>
-                </Card>
-
-                {/* Colors */}
-                <Card>
-                  <CardHeader><h3 className="text-sm font-semibold">Color Psychology</h3></CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex gap-2">
-                      {analysis.conversionElements.colorPsychology.dominantColors.map((c) => (
-                        <div key={c} className="flex items-center gap-1.5">
-                          <div className="w-4 h-4 rounded-sm border border-border" style={{ backgroundColor: c }} />
-                          <span className="text-xs text-muted-foreground">{c}</span>
+                {isImageAnalysis(analysis) ? (
+                  <>
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Hook</h3></CardHeader>
+                      <CardContent className="space-y-1">
+                        <p className="text-sm font-medium">&ldquo;{analysis.conversionElements.hook.text}&rdquo;</p>
+                        <div className="flex gap-2">
+                          <Badge>{analysis.conversionElements.hook.type}</Badge>
+                          <Badge variant="outline">{analysis.conversionElements.hook.effectivenessScore}/10</Badge>
                         </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{analysis.conversionElements.colorPsychology.emotionalImpact}</p>
-                  </CardContent>
-                </Card>
+                        <p className="text-xs text-muted-foreground">{analysis.conversionElements.hook.whyItWorks}</p>
+                      </CardContent>
+                    </Card>
 
-                {/* Copy analysis */}
-                <Card>
-                  <CardHeader><h3 className="text-sm font-semibold">Copy Analysis</h3></CardHeader>
-                  <CardContent className="space-y-1 text-xs text-muted-foreground">
-                    <p><span className="text-foreground font-medium">Headline:</span> {analysis.conversionElements.copyAnalysis.headline}</p>
-                    <p>{analysis.conversionElements.copyAnalysis.bodyCopySummary}</p>
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {analysis.conversionElements.copyAnalysis.powerWords.map((w) => (
-                        <Badge key={w} variant="outline" className="text-[10px]">{w}</Badge>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Visual Hierarchy</h3></CardHeader>
+                      <CardContent className="space-y-1 text-xs text-muted-foreground">
+                        <p><span className="text-foreground font-medium">Layout:</span> {analysis.conversionElements.visualHierarchy.layoutType}</p>
+                        <p><span className="text-foreground font-medium">Focal point:</span> {analysis.conversionElements.visualHierarchy.focalPoint}</p>
+                        <p><span className="text-foreground font-medium">Flow:</span> {analysis.conversionElements.visualHierarchy.visualFlow}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Color Psychology</h3></CardHeader>
+                      <CardContent className="space-y-2">
+                        <div className="flex gap-2">
+                          {analysis.conversionElements.colorPsychology.dominantColors.map((color) => (
+                            <div key={color} className="flex items-center gap-1.5">
+                              <div className="w-4 h-4 rounded-sm border border-border" style={{ backgroundColor: color }} />
+                              <span className="text-xs text-muted-foreground">{color}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{analysis.conversionElements.colorPsychology.emotionalImpact}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Copy Analysis</h3></CardHeader>
+                      <CardContent className="space-y-1 text-xs text-muted-foreground">
+                        <p><span className="text-foreground font-medium">Headline:</span> {analysis.conversionElements.copyAnalysis.headline}</p>
+                        <p>{analysis.conversionElements.copyAnalysis.bodyCopySummary}</p>
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {analysis.conversionElements.copyAnalysis.powerWords.map((word) => (
+                            <Badge key={word} variant="outline" className="text-[10px]">{word}</Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : isVideoAnalysis(analysis) ? (
+                  <>
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Video Summary</h3></CardHeader>
+                      <CardContent className="space-y-1 text-xs text-muted-foreground">
+                        <p><span className="text-foreground font-medium">Hook:</span> {analysis.videoSummary.hookSummary}</p>
+                        <p><span className="text-foreground font-medium">Offer:</span> {analysis.videoSummary.offerSummary}</p>
+                        <p><span className="text-foreground font-medium">CTA:</span> {analysis.videoSummary.ctaText}</p>
+                        <p><span className="text-foreground font-medium">First 3 seconds:</span> {analysis.videoSummary.firstThreeSeconds}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Audio and Pacing</h3></CardHeader>
+                      <CardContent className="space-y-1 text-xs text-muted-foreground">
+                        <p><span className="text-foreground font-medium">Audio strategy:</span> {analysis.audioAnalysis.audioStrategy || "hybrid"}</p>
+                        <p><span className="text-foreground font-medium">Voiceover:</span> {analysis.audioAnalysis.voiceoverStyle}</p>
+                        <p><span className="text-foreground font-medium">Music:</span> {analysis.audioAnalysis.musicMood}</p>
+                        <p><span className="text-foreground font-medium">Music detail:</span> {analysis.audioAnalysis.musicDescription || analysis.audioAnalysis.musicMood}</p>
+                        <p><span className="text-foreground font-medium">Captions:</span> {analysis.audioAnalysis.captionStyle}</p>
+                        <p><span className="text-foreground font-medium">Pacing:</span> {analysis.audioAnalysis.pacing}</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader><h3 className="text-sm font-semibold">Scene Breakdown</h3></CardHeader>
+                      <CardContent className="space-y-2 text-xs text-muted-foreground">
+                        {analysis.sceneBreakdown.slice(0, 4).map((scene) => (
+                          <div key={`${scene.index}-${scene.startSeconds}`} className="rounded-md border border-border p-2">
+                            <p className="font-medium text-foreground">
+                              {scene.startSeconds}s - {scene.endSeconds}s • {scene.goal}
+                            </p>
+                            <p>{scene.visuals}</p>
+                            <p>Text: {scene.onScreenText}</p>
+                            <p>VO: {scene.voiceover}</p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : null}
 
                 {/* Replication Brief */}
                 <Card className="border-primary/30">
@@ -199,21 +262,54 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
                         {analysis.replicationBrief.mustKeepElements.map((e, i) => <li key={i}>{e}</li>)}
                       </ul>
                     </div>
-                    <div>
-                      <span className="text-foreground font-medium">Suggested headline:</span>
-                      <p className="text-muted-foreground mt-0.5">&ldquo;{analysis.replicationBrief.textToRender.headline}&rdquo;</p>
-                    </div>
-                    <div>
-                      <span className="text-foreground font-medium">Suggested CTA:</span>
-                      <p className="text-muted-foreground mt-0.5">&ldquo;{analysis.replicationBrief.textToRender.cta}&rdquo;</p>
-                    </div>
+                    {isImageAnalysis(analysis) ? (
+                      <>
+                        <div>
+                          <span className="text-foreground font-medium">Suggested headline:</span>
+                          <p className="text-muted-foreground mt-0.5">&ldquo;{analysis.replicationBrief.textToRender.headline}&rdquo;</p>
+                        </div>
+                        <div>
+                          <span className="text-foreground font-medium">Suggested CTA:</span>
+                          <p className="text-muted-foreground mt-0.5">&ldquo;{analysis.replicationBrief.textToRender.cta}&rdquo;</p>
+                        </div>
+                      </>
+                    ) : isVideoAnalysis(analysis) ? (
+                      <>
+                        <div>
+                          <span className="text-foreground font-medium">Branded hooks:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {analysis.replicationBrief.brandedHookOptions.map((hook) => (
+                              <Badge key={hook} variant="outline" className="text-[10px]">{hook}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-foreground font-medium">Branded CTAs:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {analysis.replicationBrief.brandedCtaOptions.map((cta) => (
+                              <Badge key={cta} variant="outline" className="text-[10px]">{cta}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-foreground font-medium">Shot list:</span>
+                          <div className="mt-1 space-y-1 text-muted-foreground">
+                            {analysis.replicationBrief.shotList.slice(0, 3).map((shot) => (
+                              <p key={shot.sequence}>
+                                {shot.sequence}. {shot.visuals} ({shot.durationSeconds}s)
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
                   </CardContent>
                 </Card>
 
                 <div className="flex gap-2 pt-2">
                   <Button onClick={() => onDuplicate(ad, analysis)}>
                     <Copy className="h-4 w-4 mr-2" />
-                    Duplicate This Ad
+                    {mediaType === "video" ? "Duplicate This Video" : "Duplicate This Ad"}
                   </Button>
                 </div>
               </div>

@@ -9,6 +9,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useAppStore } from "@/shared/lib/store";
+import { getAdMediaType, getDisplayFormatValues } from "@/shared/lib/media";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import type { AdAnalysis } from "@/shared/types";
 import { useRouter } from "next/navigation";
@@ -36,18 +37,19 @@ export default function DiscoverPage() {
   const [niche, setNiche] = useState("");
   const [minDays, setMinDays] = useState("14");
   const [order, setOrder] = useState("longest_running");
+  const [mediaType, setMediaType] = useState<"image" | "video" | "all">("image");
   const [searchTrigger, setSearchTrigger] = useState(0);
   const [analyzingAd, setAnalyzingAd] = useState<ForeplayAd | null>(null);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["discover-ads", query, niche, minDays, order, searchTrigger],
+    queryKey: ["discover-ads", query, niche, minDays, order, mediaType, searchTrigger],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (query) params.set("query", query);
       if (niche) params.append("niches", niche);
       if (minDays) params.set("running_duration_min_days", minDays);
       params.set("order", order);
-      params.set("display_format", "image");
+      getDisplayFormatValues(mediaType).forEach((value) => params.append("display_format", value));
       params.set("limit", "40");
 
       const res = await fetch(`/api/foreplay/discover-ads?${params}`);
@@ -69,7 +71,7 @@ export default function DiscoverPage() {
         JSON.stringify({
           ad,
           analysis: existingAnalysis || null,
-          skipAnalysis: !existingAnalysis,
+          skipAnalysis: getAdMediaType(ad) === "image" && !existingAnalysis,
         })
       );
       router.push("/generate");
@@ -122,6 +124,12 @@ export default function DiscoverPage() {
           <option value="longest_running">Longest Running</option>
           <option value="newest">Newest</option>
           <option value="most_relevant">Most Relevant</option>
+        </Select>
+
+        <Select value={mediaType} onChange={(e) => setMediaType(e.target.value as "image" | "video" | "all")} className="w-28">
+          <option value="image">Image</option>
+          <option value="video">Video</option>
+          <option value="all">All</option>
         </Select>
 
         <Button onClick={handleSearch}>

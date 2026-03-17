@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useAppStore } from "@/shared/lib/store";
-import type { Competitor, UploadedAsset } from "@/shared/types";
+import type { BrandVideoReference, Competitor, UploadedAsset } from "@/shared/types";
 import type { ForeplayBrand } from "@/shared/types/foreplay";
 import {
   BookOpen,
@@ -21,6 +21,7 @@ import {
   Target,
   Users,
   ShieldCheck,
+  Film,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -128,6 +129,80 @@ function FileUpload({
           <input type="file" accept="image/*" multiple onChange={handleUpload} className="hidden" />
         </label>
       </div>
+    </div>
+  );
+}
+
+function VideoReferenceInput({
+  references,
+  onReferencesChange,
+}: {
+  references: BrandVideoReference[];
+  onReferencesChange: (references: BrandVideoReference[]) => void;
+}) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+
+  const addReference = () => {
+    const trimmedName = name.trim();
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return;
+
+    onReferencesChange([
+      ...references,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: trimmedName || `Reference ${references.length + 1}`,
+        url: trimmedUrl,
+      },
+    ]);
+    setName("");
+    setUrl("");
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-[1fr,2fr,auto]">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Reference name (optional)"
+        />
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addReference())}
+          placeholder="https://example.com/brand-video.mp4"
+        />
+        <Button type="button" variant="outline" onClick={addReference}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add
+        </Button>
+      </div>
+
+      {references.length > 0 && (
+        <div className="space-y-2">
+          {references.map((reference) => (
+            <div key={reference.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted">
+                <Film className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{reference.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{reference.url}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => onReferencesChange(references.filter((item) => item.id !== reference.id))}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -470,6 +545,16 @@ export default function KnowledgeBasePage() {
               <FileUpload label="Logos" assets={brandProfile.logoFiles} profileField="logoFiles" assetType="logo" />
               <FileUpload label="Example Ads" assets={brandProfile.exampleAds} profileField="exampleAds" assetType="example_ad" />
               <FileUpload label="Product Images" assets={brandProfile.productImages} profileField="productImages" assetType="product_image" />
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Brand Video References</label>
+                <p className="text-xs text-muted-foreground">
+                  Add public video URLs that represent your brand's pacing, creator energy, and CTA style.
+                </p>
+                <VideoReferenceInput
+                  references={brandProfile.videoReferences ?? []}
+                  onReferencesChange={(videoReferences) => setBrandProfile({ videoReferences })}
+                />
+              </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Excluded Themes</label>
                 <TagInput

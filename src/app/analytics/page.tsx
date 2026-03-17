@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader } from "@/shared/components/ui/card";
 import { Badge } from "@/shared/components/ui/badge";
 import { useAppStore } from "@/shared/lib/store";
 import { useGenerateStore } from "@/shared/lib/generate-store";
+import { isImageAnalysis } from "@/shared/lib/media";
+import type { ImageAdAnalysis } from "@/shared/types";
 import {
   BarChart3,
   Eye,
@@ -11,6 +13,7 @@ import {
   DollarSign,
   Brain,
   Image as ImageIcon,
+  Film,
   TrendingUp,
 } from "lucide-react";
 import Image from "next/image";
@@ -57,6 +60,7 @@ export default function AnalyticsPage() {
 
   const analysisEntries = Object.entries(analyses);
   const topAnalyses = analysisEntries
+    .filter((entry): entry is [string, ImageAdAnalysis] => isImageAnalysis(entry[1]))
     .sort(([, a], [, b]) => b.overallScore - a.overallScore)
     .slice(0, 5);
 
@@ -188,9 +192,13 @@ export default function AnalyticsPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {completedVariations.slice(0, 12).map((v) => (
                   <div key={v.id} className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border group">
-                    {v.imageDataUrl && (
-                      <Image src={v.imageDataUrl} alt="" fill className="object-cover" unoptimized />
-                    )}
+                    {v.assetUrl ? (
+                      v.mediaType === "video" ? (
+                        <video src={v.assetUrl} className="h-full w-full object-cover bg-black" muted playsInline />
+                      ) : (
+                        <Image src={v.assetUrl} alt="" fill className="object-cover" unoptimized />
+                      )
+                    ) : null}
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 p-2">
                       <div className="flex items-center justify-between">
                         <Badge
@@ -202,7 +210,10 @@ export default function AnalyticsPage() {
                         >
                           {v.status}
                         </Badge>
-                        <span className="text-[9px] text-zinc-400">{v.label}</span>
+                        <span className="flex items-center gap-1 text-[9px] text-zinc-400">
+                          {v.mediaType === "video" ? <Film className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
+                          {v.label}
+                        </span>
                       </div>
                     </div>
                   </div>

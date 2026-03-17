@@ -8,6 +8,7 @@ import { AnalysisModal } from "@/features/ui-facelift/components/dashboard/analy
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Button } from "@/shared/components/ui/button";
 import { useAppStore } from "@/shared/lib/store";
+import { getAdMediaType, getDisplayFormatValues } from "@/shared/lib/media";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import type { AdAnalysis } from "@/shared/types";
 import { useRouter } from "next/navigation";
@@ -22,6 +23,7 @@ export default function HomePage() {
     minDays: "7",
     platform: "",
     niche: "",
+    mediaType: "image",
   });
   const [selectedCompetitor, setSelectedCompetitor] = useState("all");
   const [analyzingAd, setAnalyzingAd] = useState<ForeplayAd | null>(null);
@@ -42,7 +44,7 @@ export default function HomePage() {
       if (filters.platform) params.append("publisher_platform", filters.platform);
       if (filters.niche) params.append("niches", filters.niche);
       params.set("order", filters.order);
-      params.set("display_format", "image");
+      getDisplayFormatValues(filters.mediaType).forEach((value) => params.append("display_format", value));
       params.set("limit", "30");
       if (cursor) params.set("cursor", String(cursor));
 
@@ -67,7 +69,7 @@ export default function HomePage() {
         JSON.stringify({
           ad,
           analysis: existingAnalysis || null,
-          skipAnalysis: !existingAnalysis,
+          skipAnalysis: getAdMediaType(ad) === "image" && !existingAnalysis,
         })
       );
       router.push("/generate");

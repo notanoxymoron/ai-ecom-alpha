@@ -28,9 +28,16 @@ export interface BrandProfile {
   logoFiles: UploadedAsset[];
   exampleAds: UploadedAsset[];
   productImages: UploadedAsset[];
+  videoReferences: BrandVideoReference[];
   niche: string;
   subNiches: string[];
   excludedThemes: string[];
+}
+
+export interface BrandVideoReference {
+  id: string;
+  name: string;
+  url: string;
 }
 
 export interface UploadedAsset {
@@ -52,7 +59,8 @@ export interface Competitor {
   adCount: number;
 }
 
-export interface AdAnalysis {
+export interface ImageAdAnalysis {
+  mediaType: "image";
   overallScore: number;
   conversionElements: {
     hook: {
@@ -108,6 +116,55 @@ export interface AdAnalysis {
     reasoning: string;
   };
 }
+
+export interface VideoAdAnalysis {
+  mediaType: "video";
+  overallScore: number;
+  videoSummary: {
+    hookSummary: string;
+    offerSummary: string;
+    ctaText: string;
+    firstThreeSeconds: string;
+    durationLabel: string;
+  };
+  sceneBreakdown: Array<{
+    index: number;
+    startSeconds: number;
+    endSeconds: number;
+    goal: string;
+    visuals: string;
+    onScreenText: string;
+    voiceover: string;
+    transition: string;
+  }>;
+  audioAnalysis: {
+    audioStrategy: string;
+    voiceoverStyle: string;
+    musicMood: string;
+    musicDescription: string;
+    captionStyle: string;
+    pacing: string;
+  };
+  replicationBrief: {
+    mustKeepElements: string[];
+    adaptableElements: string[];
+    brandedHookOptions: string[];
+    brandedCtaOptions: string[];
+    shotList: Array<{
+      sequence: number;
+      visuals: string;
+      overlayText: string;
+      voiceoverLine: string;
+      durationSeconds: number;
+    }>;
+  };
+  relevanceToBrand: {
+    score: number;
+    reasoning: string;
+  };
+}
+
+export type AdAnalysis = ImageAdAnalysis | VideoAdAnalysis;
 
 export interface GeneratedAd {
   id: string;

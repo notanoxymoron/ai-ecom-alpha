@@ -11,6 +11,9 @@ import { Spinner } from "@/shared/components/ui/spinner";
 import { useAppStore } from "@/shared/lib/store";
 import { useGenerateStore, type GeneratedVariation } from "@/shared/lib/generate-store";
 import { buildGenerationPrompt, type GenerationOverrides } from "@/lib/generation/generator";
+import { getSupportedVideoAspectRatio, VIDEO_ASPECT_RATIO_OPTIONS } from "@/lib/video/config";
+import { buildVideoGenerationPrompt } from "@/lib/video/prompt";
+import { getAdMediaType, getPrimaryCreativeUrl, isImageAnalysis, isVideoAnalysis } from "@/shared/lib/media";
 import {
   Zap,
   ChevronRight,
@@ -22,6 +25,7 @@ import {
   SkipForward,
   Eye,
   X,
+  Film,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -73,14 +77,21 @@ export default function GeneratePage() {
 
   const runAnalysis = async () => {
     const key = openaiKey;
-    if (!selectedAd || !key) return;
+    if (!selectedAd) return;
     setAnalyzing(true);
     setError(null);
     try {
-      const res = await fetch("/api/analyze", {
+      const isVideoAd = getAdMediaType(selectedAd) === "video";
+      if (!isVideoAd && !key) return;
+
+      const res = await fetch(isVideoAd ? "/api/video-remix/analyze" : "/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad: selectedAd, brandProfile, openaiApiKey: key }),
+        body: JSON.stringify(
+          isVideoAd
+            ? { ad: selectedAd, brandProfile }
+            : { ad: selectedAd, brandProfile, openaiApiKey: key }
+        ),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -110,12 +121,21 @@ export default function GeneratePage() {
   };
 
   const getVariationLabel = (index: number, total: number): string => {
+    if (selectedAd && getAdMediaType(selectedAd) === "video") return "Video Remix";
     if (total <= 2 || index < 2) return `Exact Replica ${index + 1}`;
     return `Creative Variation ${index - 1}`;
   };
 
   // Build the auto-generated prompt for preview (first variation)
   const getPreviewPrompt = useCallback((): string => {
+    if (isVideoAnalysis(localAnalysis)) {
+      return buildVideoGenerationPrompt({
+        analysis: localAnalysis,
+        brandProfile,
+        aspectRatio: getSupportedVideoAspectRatio(aspectRatio),
+      });
+    }
+
     const activeOverrides: GenerationOverrides = {};
     if (overrides.suggestedHeadline) activeOverrides.suggestedHeadline = overrides.suggestedHeadline;
     if (overrides.suggestedCta) activeOverrides.suggestedCta = overrides.suggestedCta;
@@ -147,9 +167,104 @@ export default function GeneratePage() {
     setError(null);
     setStep("generate");
 
+    const isVideoAd = getAdMediaType(selectedAd) === "video";
+
+    if (isVideoAd) {
+      if (!isVideoAnalysis(localAnalysis)) {
+        setError("Analyze the video before generating a remix");
+        setGenerating(false);
+        setStep("configure");
+        return;
+      }
+
+      const newVariation: GeneratedVariation = {
+        id: `video-gen-${Date.now()}`,
+        mediaType: "video",
+        assetUrl: "",
+        label: "Video Remix",
+        aspectRatio,
+        status: "queued",
+      };
+      setVariations([newVariation]);
+
+      try {
+        const res = await fetch("/api/video-remix/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            analysis: localAnalysis,
+            brandProfile,
+            aspectRatio: selectedVideoAspectRatio,
+            customPrompt: editedPrompt || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const errMsg = data.error || `HTTP ${res.status}`;
+          addErrorLog({
+            source: "generation",
+            message: `Video generation failed (${selectedAd.name || selectedAd.id})`,
+            details: errMsg,
+            context: `Ad: ${selectedAd.name || selectedAd.id} | Aspect: ${aspectRatio}`,
+          });
+          throw new Error(errMsg);
+        }
+
+        const jobId = data.data.jobId as string;
+        let currentVariation: GeneratedVariation = {
+          ...newVariation,
+          remoteJobId: jobId,
+          status: data.data.status === "completed" ? "generating" : data.data.status,
+        };
+        setVariations([currentVariation]);
+
+        for (let attempt = 0; attempt < 60; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          const statusRes = await fetch(`/api/video-remix/jobs/status?jobId=${encodeURIComponent(jobId)}`);
+          const statusData = await statusRes.json();
+          if (!statusRes.ok) {
+            throw new Error(statusData.error || `HTTP ${statusRes.status}`);
+          }
+
+          if (statusData.data.status === "failed") {
+            throw new Error("Video generation failed at provider");
+          }
+
+          currentVariation = {
+            ...currentVariation,
+            status: statusData.data.status === "completed" ? "completed" : "generating",
+          };
+
+          if (statusData.data.status === "completed") {
+            currentVariation = {
+              ...currentVariation,
+              assetUrl: `/api/video-remix/jobs/content?jobId=${encodeURIComponent(jobId)}`,
+              mimeType: "video/mp4",
+            };
+            setVariations([currentVariation]);
+            incrementUsage("adsGenerated");
+            setGenerating(false);
+            setStep("review");
+            return;
+          }
+
+          setVariations([currentVariation]);
+        }
+
+        throw new Error("Video generation timed out while waiting for the provider");
+      } catch (err) {
+        setVariations([{ ...newVariation, status: "rejected" }]);
+        setError(err instanceof Error ? err.message : "Video generation failed");
+        setGenerating(false);
+        setStep("review");
+        return;
+      }
+    }
+
     const newVariations: GeneratedVariation[] = Array.from({ length: variationCount }, (_, i) => ({
       id: `gen-${Date.now()}-${i}`,
-      imageDataUrl: "",
+      mediaType: "image",
+      assetUrl: "",
       label: getVariationLabel(i, variationCount),
       aspectRatio,
       status: "generating",
@@ -199,7 +314,12 @@ export default function GeneratePage() {
         }
 
         const dataUrl = `data:${data.data.mimeType};base64,${data.data.imageBase64}`;
-        newVariations[i] = { ...newVariations[i], imageDataUrl: dataUrl, status: "completed" };
+        newVariations[i] = {
+          ...newVariations[i],
+          assetUrl: dataUrl,
+          mimeType: data.data.mimeType,
+          status: "completed",
+        };
         setVariations([...newVariations]);
         incrementUsage("adsGenerated");
         incrementUsage("generationCostUsd", 0.134);
@@ -214,26 +334,54 @@ export default function GeneratePage() {
     setStep("review");
   };
 
-  const downloadImage = (dataUrl: string, index: number) => {
+  const downloadAsset = (variation: GeneratedVariation, index: number) => {
     const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = `generated-ad-${index + 1}.png`;
+    link.href =
+      variation.mediaType === "video"
+        ? `${variation.assetUrl}${variation.assetUrl.includes("?") ? "&" : "?"}download=1`
+        : variation.assetUrl;
+    link.download =
+      variation.mediaType === "video"
+        ? `generated-video-${index + 1}.mp4`
+        : `generated-ad-${index + 1}.png`;
     link.click();
   };
 
-  const imageUrl = selectedAd?.image || selectedAd?.thumbnail;
-  const isDirectMode = !localAnalysis;
+  const mediaType = selectedAd ? getAdMediaType(selectedAd) : "image";
+  const creativeUrl = selectedAd ? getPrimaryCreativeUrl(selectedAd) : null;
+  const isVideoFlow = mediaType === "video";
+  const selectedVideoAspectRatio = getSupportedVideoAspectRatio(aspectRatio);
+  const isDirectMode = !localAnalysis && !isVideoFlow;
   const showPromptEditor = promptEditorOpen && step === "configure";
+  const renderCreativePreview = (mode: "cover" | "contain" = "cover") => {
+    if (!selectedAd || !creativeUrl) return null;
+
+    if (isVideoFlow && selectedAd.video) {
+      return (
+        <video
+          src={selectedAd.video}
+          poster={selectedAd.thumbnail || undefined}
+          controls
+          playsInline
+          className={`h-full w-full ${mode === "cover" ? "object-cover" : "object-contain"} bg-black`}
+        />
+      );
+    }
+
+    return <Image src={creativeUrl} alt="" fill className={`object-${mode}`} unoptimized />;
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Zap className="h-6 w-6 text-primary" />
-          Generate Ad
+          {isVideoFlow ? <Film className="h-6 w-6 text-primary" /> : <Zap className="h-6 w-6 text-primary" />}
+          {isVideoFlow ? "Generate Video Ad" : "Generate Ad"}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Duplicate a winning ad with your brand identity.
+          {isVideoFlow
+            ? "Recreate a winning competitor video with your brand identity."
+            : "Duplicate a winning ad with your brand identity."}
         </p>
       </div>
 
@@ -283,9 +431,9 @@ export default function GeneratePage() {
               <div className="pt-4">
                 <p className="text-sm font-medium mb-2">Selected Ad:</p>
                 <div className="inline-block">
-                  {imageUrl && (
+                  {creativeUrl && (
                     <div className="relative w-48 aspect-[4/5] rounded-lg overflow-hidden border border-border">
-                      <Image src={imageUrl} alt="" fill className="object-cover" unoptimized />
+                      {renderCreativePreview()}
                     </div>
                   )}
                 </div>
@@ -293,10 +441,12 @@ export default function GeneratePage() {
                   <Button onClick={() => setStep("analyze")}>
                     Analyze First
                   </Button>
-                  <Button variant="outline" onClick={skipToGenerate}>
-                    <SkipForward className="h-4 w-4 mr-2" />
-                    Skip to Generate
-                  </Button>
+                  {!isVideoFlow && (
+                    <Button variant="outline" onClick={skipToGenerate}>
+                      <SkipForward className="h-4 w-4 mr-2" />
+                      Skip to Generate
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -308,9 +458,9 @@ export default function GeneratePage() {
       {step === "analyze" && selectedAd && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div>
-            {imageUrl && (
+            {creativeUrl && (
               <div className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border">
-                <Image src={imageUrl} alt="" fill className="object-cover" unoptimized />
+                {renderCreativePreview()}
               </div>
             )}
             {selectedAd.description && (
@@ -319,20 +469,23 @@ export default function GeneratePage() {
           </div>
           <Card>
             <CardContent className="p-6 space-y-4">
-              <h3 className="font-semibold">Analyze This Ad</h3>
+              <h3 className="font-semibold">{isVideoFlow ? "Analyze This Video Ad" : "Analyze This Ad"}</h3>
               <p className="text-sm text-muted-foreground">
-                GPT-4o Vision will analyze the conversion elements and create a replication brief.
-                Or skip analysis to generate directly from the image.
+                {isVideoFlow
+                  ? "Gemini will break down the scenes, hook, pacing, overlays, audio, and CTA before generating a structured recreation."
+                  : "GPT-4o Vision will analyze the conversion elements and create a replication brief. Or skip analysis to generate directly from the image."}
               </p>
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">OpenAI API Key</label>
-                <Input
-                  type="password"
-                  placeholder="sk-..."
-                  defaultValue={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
-                />
-              </div>
+              {!isVideoFlow && (
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">OpenAI API Key</label>
+                  <Input
+                    type="password"
+                    placeholder="sk-..."
+                    defaultValue={openaiKey}
+                    onChange={(e) => setOpenaiKey(e.target.value)}
+                  />
+                </div>
+              )}
               {error && (
                 <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                   <p className="text-sm text-destructive font-medium">Error</p>
@@ -344,7 +497,7 @@ export default function GeneratePage() {
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back
                 </Button>
-                <Button onClick={runAnalysis} disabled={analyzing || !openaiKey}>
+                <Button onClick={runAnalysis} disabled={analyzing || (!isVideoFlow && !openaiKey)}>
                   {analyzing ? (
                     <>
                       <Spinner className="h-4 w-4 mr-2" />
@@ -357,10 +510,12 @@ export default function GeneratePage() {
                     </>
                   )}
                 </Button>
-                <Button variant="ghost" onClick={skipToGenerate}>
-                  <SkipForward className="h-4 w-4 mr-2" />
-                  Skip
-                </Button>
+                {!isVideoFlow && (
+                  <Button variant="ghost" onClick={skipToGenerate}>
+                    <SkipForward className="h-4 w-4 mr-2" />
+                    Skip
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -380,10 +535,33 @@ export default function GeneratePage() {
                       <span className="font-medium">Score:</span>{" "}
                       <span className="text-primary font-bold">{localAnalysis.overallScore}/10</span>
                     </div>
-                    <div>
-                      <span className="font-medium">Layout:</span>{" "}
-                      <span className="text-muted-foreground">{localAnalysis.conversionElements.visualHierarchy.layoutType}</span>
-                    </div>
+                    {isImageAnalysis(localAnalysis) ? (
+                      <div>
+                        <span className="font-medium">Layout:</span>{" "}
+                        <span className="text-muted-foreground">{localAnalysis.conversionElements.visualHierarchy.layoutType}</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p>
+                          <span className="font-medium">Hook:</span>{" "}
+                          <span className="text-muted-foreground">{localAnalysis.videoSummary.hookSummary}</span>
+                        </p>
+                        <p>
+                          <span className="font-medium">Pacing:</span>{" "}
+                          <span className="text-muted-foreground">{localAnalysis.audioAnalysis.pacing}</span>
+                        </p>
+                        <p>
+                          <span className="font-medium">Audio:</span>{" "}
+                          <span className="text-muted-foreground">
+                            {localAnalysis.audioAnalysis.audioStrategy || "hybrid"} / {localAnalysis.audioAnalysis.musicMood}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="font-medium">Scenes:</span>{" "}
+                          <span className="text-muted-foreground">{localAnalysis.sceneBreakdown.length}</span>
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <span className="font-medium">Keep:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
@@ -410,9 +588,9 @@ export default function GeneratePage() {
                 </Card>
               )}
 
-              {imageUrl && (
+              {creativeUrl && (
                 <div className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border max-w-xs">
-                  <Image src={imageUrl} alt="Source ad" fill className="object-cover" unoptimized />
+                  {renderCreativePreview()}
                 </div>
               )}
             </div>
@@ -422,91 +600,119 @@ export default function GeneratePage() {
               <CardContent className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Aspect Ratio</label>
-                  <Select value={aspectRatio} onChange={(e) => { setAspectRatio(e.target.value); setEditedPrompt(null); }}>
-                    <option value="4:5">4:5 — Meta Feed</option>
-                    <option value="9:16">9:16 — Stories</option>
-                    <option value="1:1">1:1 — Square</option>
-                    <option value="16:9">16:9 — Display</option>
-                  </Select>
+                  {isVideoFlow ? (
+                    <Select value={selectedVideoAspectRatio} onChange={(e) => { setAspectRatio(e.target.value); setEditedPrompt(null); }}>
+                      {VIDEO_ASPECT_RATIO_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Select value={aspectRatio} onChange={(e) => { setAspectRatio(e.target.value); setEditedPrompt(null); }}>
+                      <option value="4:5">4:5 — Meta Feed</option>
+                      <option value="9:16">9:16 — Stories</option>
+                      <option value="1:1">1:1 — Square</option>
+                      <option value="16:9">16:9 — Display</option>
+                    </Select>
+                  )}
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Variations</label>
-                  <Select
-                    value={String(variationCount)}
-                    onChange={(e) => { setVariationCount(Number(e.target.value)); setEditedPrompt(null); }}
-                  >
-                    <option value="1">1 — Exact Replica</option>
-                    <option value="2">2 — Exact Replicas</option>
-                    <option value="3">3 — 2 Exact + 1 Creative</option>
-                    <option value="4">4 — 2 Exact + 2 Creative</option>
-                    <option value="5">5 — 2 Exact + 3 Creative</option>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Exact replicas swap branding/colors only. Creative variations adjust layout, sizing, and colors.
-                  </p>
-                </div>
+                {isVideoFlow ? (
+                  <div className="space-y-3 rounded-lg border border-border p-4">
+                    <h4 className="text-sm font-semibold">Video Generation Mode</h4>
+                    <p className="text-xs text-muted-foreground">
+                      V1 generates one structured recreation per run. Use the full prompt editor to adjust shot list,
+                      voiceover, overlays, and CTA framing before starting the render job.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Optional brand video references from the Knowledge Base will be summarized server-side and folded
+                      into the prompt automatically.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Veo supports only <span className="text-foreground">9:16</span> and <span className="text-foreground">16:9</span>.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Variations</label>
+                      <Select
+                        value={String(variationCount)}
+                        onChange={(e) => { setVariationCount(Number(e.target.value)); setEditedPrompt(null); }}
+                      >
+                        <option value="1">1 — Exact Replica</option>
+                        <option value="2">2 — Exact Replicas</option>
+                        <option value="3">3 — 2 Exact + 1 Creative</option>
+                        <option value="4">4 — 2 Exact + 2 Creative</option>
+                        <option value="5">5 — 2 Exact + 3 Creative</option>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Exact replicas swap branding/colors only. Creative variations adjust layout, sizing, and colors.
+                      </p>
+                    </div>
 
-                {/* Optional Text */}
-                <div className="space-y-1.5 border-t border-border pt-4">
-                  <h4 className="text-sm font-semibold">Optional Text</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Leave blank to keep only the text from the original ad (with competitor name swapped). Fill these to add specific text.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Suggested Headline</label>
-                  <Input
-                    value={overrides.suggestedHeadline}
-                    onChange={(e) => { setOverrides({ ...overrides, suggestedHeadline: e.target.value }); setEditedPrompt(null); }}
-                    placeholder="e.g., Transform Your Skin in 7 Days (optional)"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Suggested CTA</label>
-                  <Input
-                    value={overrides.suggestedCta}
-                    onChange={(e) => { setOverrides({ ...overrides, suggestedCta: e.target.value }); setEditedPrompt(null); }}
-                    placeholder="e.g., Shop Now (optional)"
-                  />
-                </div>
+                    <div className="space-y-1.5 border-t border-border pt-4">
+                      <h4 className="text-sm font-semibold">Optional Text</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Leave blank to keep only the text from the original ad (with competitor name swapped). Fill these to add specific text.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Suggested Headline</label>
+                      <Input
+                        value={overrides.suggestedHeadline}
+                        onChange={(e) => { setOverrides({ ...overrides, suggestedHeadline: e.target.value }); setEditedPrompt(null); }}
+                        placeholder="e.g., Transform Your Skin in 7 Days (optional)"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Suggested CTA</label>
+                      <Input
+                        value={overrides.suggestedCta}
+                        onChange={(e) => { setOverrides({ ...overrides, suggestedCta: e.target.value }); setEditedPrompt(null); }}
+                        placeholder="e.g., Shop Now (optional)"
+                      />
+                    </div>
 
-                {/* Style Overrides */}
-                <div className="space-y-1.5 border-t border-border pt-4">
-                  <h4 className="text-sm font-semibold">Style Customizations</h4>
-                  <p className="text-xs text-muted-foreground">
-                    Empty fields use your brand profile defaults.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Custom Color Scheme</label>
-                  <Input
-                    value={overrides.customColorScheme}
-                    onChange={(e) => { setOverrides({ ...overrides, customColorScheme: e.target.value }); setEditedPrompt(null); }}
-                    placeholder="e.g., Use pastel pink and white with gold accents"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Custom Branding</label>
-                  <Input
-                    value={overrides.customBranding}
-                    onChange={(e) => { setOverrides({ ...overrides, customBranding: e.target.value }); setEditedPrompt(null); }}
-                    placeholder="e.g., Include logo top-left, tagline bottom"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Additional Instructions</label>
-                  <Textarea
-                    value={overrides.additionalInstructions}
-                    onChange={(e) => { setOverrides({ ...overrides, additionalInstructions: e.target.value }); setEditedPrompt(null); }}
-                    placeholder="Any other specific instructions for the generated ad..."
-                    rows={3}
-                  />
-                </div>
+                    <div className="space-y-1.5 border-t border-border pt-4">
+                      <h4 className="text-sm font-semibold">Style Customizations</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Empty fields use your brand profile defaults.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Custom Color Scheme</label>
+                      <Input
+                        value={overrides.customColorScheme}
+                        onChange={(e) => { setOverrides({ ...overrides, customColorScheme: e.target.value }); setEditedPrompt(null); }}
+                        placeholder="e.g., Use pastel pink and white with gold accents"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Custom Branding</label>
+                      <Input
+                        value={overrides.customBranding}
+                        onChange={(e) => { setOverrides({ ...overrides, customBranding: e.target.value }); setEditedPrompt(null); }}
+                        placeholder="e.g., Include logo top-left, tagline bottom"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">Additional Instructions</label>
+                      <Textarea
+                        value={overrides.additionalInstructions}
+                        onChange={(e) => { setOverrides({ ...overrides, additionalInstructions: e.target.value }); setEditedPrompt(null); }}
+                        placeholder="Any other specific instructions for the generated ad..."
+                        rows={3}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="p-3 rounded-lg bg-muted text-xs text-muted-foreground space-y-1">
-                  <p>Estimated cost: ~${(variationCount * 0.134).toFixed(2)}</p>
+                  <p>Estimated cost: {isVideoFlow ? "provider-dependent" : `~$${(variationCount * 0.134).toFixed(2)}`}</p>
                   <p>Using brand: <span className="text-foreground">{brandProfile.brandName || "Not set"}</span></p>
-                  <p>Logos: {brandProfile.logoFiles.length} | Example ads: {brandProfile.exampleAds.length}</p>
+                  <p>
+                    Logos: {brandProfile.logoFiles.length} | Example ads: {brandProfile.exampleAds.length}
+                    {isVideoFlow && ` | Video refs: ${brandProfile.videoReferences?.length ?? 0}`}
+                  </p>
                   {isDirectMode && <p className="text-yellow-500">Mode: Direct (no analysis)</p>}
                   {editedPrompt !== null && <p className="text-primary">Using custom edited prompt</p>}
                 </div>
@@ -531,8 +737,10 @@ export default function GeneratePage() {
                     {editedPrompt !== null ? "Edit Prompt" : "View Full Prompt"}
                   </Button>
                   <Button onClick={runGeneration} disabled={generating}>
-                    <Zap className="h-4 w-4 mr-2" />
-                    Generate {variationCount} Variation{variationCount > 1 ? "s" : ""}
+                    {isVideoFlow ? <Film className="h-4 w-4 mr-2" /> : <Zap className="h-4 w-4 mr-2" />}
+                    {isVideoFlow
+                      ? "Generate Video Remix"
+                      : `Generate ${variationCount} Variation${variationCount > 1 ? "s" : ""}`}
                   </Button>
                 </div>
               </CardContent>
@@ -578,8 +786,10 @@ export default function GeneratePage() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  This is the exact prompt sent to Gemini for image generation. Edit it to fine-tune the output.
-                  {variationCount > 1 && " When edited, the same prompt is used for all variations."}
+                  {isVideoFlow
+                    ? "This is the exact prompt sent to Veo for the video recreation job."
+                    : "This is the exact prompt sent to Gemini for image generation. Edit it to fine-tune the output."}
+                  {!isVideoFlow && variationCount > 1 && " When edited, the same prompt is used for all variations."}
                 </p>
               </CardHeader>
               <CardContent>
@@ -609,9 +819,9 @@ export default function GeneratePage() {
             {/* Source ad */}
             <div className="space-y-2">
               <h3 className="text-sm font-medium text-muted-foreground">Original</h3>
-              {imageUrl && (
+              {creativeUrl && (
                 <div className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border">
-                  <Image src={imageUrl} alt="Source" fill className="object-cover" unoptimized />
+                  {renderCreativePreview()}
                 </div>
               )}
             </div>
@@ -621,23 +831,29 @@ export default function GeneratePage() {
               <div key={v.id} className="space-y-2">
                 <h3 className="text-sm font-medium">{v.label}</h3>
                 <div className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border bg-muted">
-                  {v.status === "generating" ? (
+                  {v.status === "queued" || v.status === "generating" ? (
                     <div className="flex flex-col items-center justify-center h-full gap-2">
                       <Spinner className="h-8 w-8" />
-                      <span className="text-xs text-muted-foreground">Generating...</span>
+                      <span className="text-xs text-muted-foreground">
+                        {v.status === "queued" ? "Queued..." : "Generating..."}
+                      </span>
                     </div>
                   ) : v.status === "rejected" ? (
                     <div className="flex flex-col items-center justify-center h-full gap-2">
                       <XCircle className="h-8 w-8 text-destructive" />
                       <span className="text-xs text-destructive">Failed</span>
                     </div>
-                  ) : v.imageDataUrl ? (
-                    <Image src={v.imageDataUrl} alt="" fill className="object-cover" unoptimized />
+                  ) : v.assetUrl ? (
+                    v.mediaType === "video" ? (
+                      <video src={v.assetUrl} controls playsInline className="h-full w-full object-cover bg-black" />
+                    ) : (
+                      <Image src={v.assetUrl} alt="" fill className="object-cover" unoptimized />
+                    )
                   ) : null}
                 </div>
                 {v.status === "completed" && (
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => downloadImage(v.imageDataUrl, i)}>
+                    <Button size="sm" variant="outline" onClick={() => downloadAsset(v, i)}>
                       <Download className="h-3.5 w-3.5 mr-1" />
                       Download
                     </Button>
@@ -671,7 +887,7 @@ export default function GeneratePage() {
                 onClick={() => {
                   variations
                     .filter((v) => v.status === "completed" || v.status === "approved")
-                    .forEach((v, i) => downloadImage(v.imageDataUrl, i));
+                    .forEach((v, i) => downloadAsset(v, i));
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />

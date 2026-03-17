@@ -12,6 +12,7 @@ export interface FilterValues {
   minDays: string;
   platform: string;
   niche: string;
+  mediaType: "image" | "video" | "all";
 }
 
 interface FiltersProps {
@@ -125,6 +126,19 @@ export function Filters({
               <option value="">All</option>
               <option value="facebook">Facebook</option>
               <option value="instagram">Instagram</option>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Media:</span>
+            <Select
+              value={filters.mediaType}
+              onChange={(e) => update("mediaType", e.target.value as FilterValues["mediaType"])}
+              className="w-28"
+            >
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+              <option value="all">All</option>
             </Select>
           </div>
 

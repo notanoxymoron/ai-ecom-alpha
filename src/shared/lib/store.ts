@@ -3,25 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { BrandProfile, Competitor, UsageStats, AdAnalysis, GeneratedAd, UploadedAsset, ErrorLogEntry } from "@/shared/types";
-
-const defaultBrandProfile: BrandProfile = {
-  brandName: "",
-  brandUrl: "",
-  brandDescription: "",
-  brandVoice: "",
-  targetAudience: "",
-  usps: [],
-  productCategories: [],
-  priceRange: "",
-  brandColors: { primary: "#000000", secondary: "#333333", accent: "#FF5733" },
-  fonts: { heading: "Inter Bold", body: "Inter Regular" },
-  logoFiles: [],
-  exampleAds: [],
-  productImages: [],
-  niche: "",
-  subNiches: [],
-  excludedThemes: [],
-};
+import { defaultBrandProfile, normalizeBrandProfile } from "./brand-profile";
 
 interface AppState {
   // Knowledge Base
@@ -72,7 +54,7 @@ export const useAppStore = create<AppState>()(
 
       setBrandProfile: (profile) =>
         set((state) => ({
-          brandProfile: { ...state.brandProfile, ...profile },
+          brandProfile: normalizeBrandProfile({ ...state.brandProfile, ...profile }),
         })),
 
       addCompetitor: (competitor) =>
@@ -117,7 +99,7 @@ export const useAppStore = create<AppState>()(
       addBrandAsset: (asset, profileField) =>
         set((state) => ({
           brandProfile: {
-            ...state.brandProfile,
+            ...normalizeBrandProfile(state.brandProfile),
             [profileField]: [...state.brandProfile[profileField], asset],
           },
         })),
@@ -125,7 +107,7 @@ export const useAppStore = create<AppState>()(
       removeBrandAsset: (assetId, profileField) =>
         set((state) => ({
           brandProfile: {
-            ...state.brandProfile,
+            ...normalizeBrandProfile(state.brandProfile),
             [profileField]: state.brandProfile[profileField].filter(
               (a) => a.id !== assetId
             ),
@@ -148,6 +130,15 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "ai-ecom-engine-store",
+      merge: (persistedState, currentState) => {
+        const typedPersistedState = persistedState as Partial<AppState> | undefined;
+
+        return {
+          ...currentState,
+          ...typedPersistedState,
+          brandProfile: normalizeBrandProfile(typedPersistedState?.brandProfile),
+        };
+      },
       partialize: (state) => ({
         brandProfile: state.brandProfile,
         competitors: state.competitors,

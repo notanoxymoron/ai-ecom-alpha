@@ -1,4 +1,4 @@
-import type { AdAnalysis, BrandProfile } from "@/shared/types";
+import type { BrandProfile, ImageAdAnalysis } from "@/shared/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 
 const ANALYSIS_PROMPT = `You are an expert direct-response advertising analyst specializing in e-commerce static ads. Analyze this ad to identify specific elements that make it high-converting.
@@ -71,7 +71,7 @@ export async function analyzeAd(
   ad: ForeplayAd,
   brandProfile: BrandProfile,
   openaiApiKey: string
-): Promise<AdAnalysis> {
+): Promise<ImageAdAnalysis> {
   const imageUrl = ad.image || ad.thumbnail;
   if (!imageUrl) {
     throw new Error("Ad has no image to analyze");
@@ -119,5 +119,9 @@ export async function analyzeAd(
 
   // Strip markdown code fences if present
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  return JSON.parse(cleaned) as AdAnalysis;
+  const parsed = JSON.parse(cleaned) as Omit<ImageAdAnalysis, "mediaType">;
+  return {
+    mediaType: "image",
+    ...parsed,
+  };
 }
