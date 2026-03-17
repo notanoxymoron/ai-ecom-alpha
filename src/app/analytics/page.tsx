@@ -1,217 +1,199 @@
 "use client";
 
-import { Card, CardContent, CardHeader } from "@/shared/components/ui/card";
-import { Badge } from "@/shared/components/ui/badge";
+import { useState } from "react";
+import { motion } from "motion/react";
+import { fadeUp, staggerContainer } from "@/features/ui-facelift/lib/animations";
+import { KPICard } from "@/features/ui-facelift/components/dashboard/kpi-card";
+import { KPISparkline } from "@/features/ui-facelift/components/dashboard/kpi-sparkline";
+import { KPIBarChart } from "@/features/ui-facelift/components/dashboard/kpi-bar-chart";
+import { KPIRingGauge } from "@/features/ui-facelift/components/dashboard/kpi-ring-gauge";
+import { KPITrendLine } from "@/features/ui-facelift/components/dashboard/kpi-trend-line";
+import { Panel } from "@/features/ui-facelift/components/dashboard/panel";
+import { PerformanceChart } from "@/features/ui-facelift/components/dashboard/performance-chart";
+import { TopAdsList } from "@/features/ui-facelift/components/dashboard/top-ads-list";
+import { RecentAdsTable } from "@/features/ui-facelift/components/dashboard/recent-ads-table";
 import { useAppStore } from "@/shared/lib/store";
 import { useGenerateStore } from "@/shared/lib/generate-store";
-import {
-  BarChart3,
-  Eye,
-  Sparkles,
-  DollarSign,
-  Brain,
-  Image as ImageIcon,
-  TrendingUp,
-} from "lucide-react";
-import Image from "next/image";
+import { Box, DollarSign, Activity, Star, ChevronRight, BarChart3, LineChart, FlaskConical } from "lucide-react";
+import { cn } from "@/shared/lib/utils";
 
-export default function AnalyticsPage() {
-  const { usage, competitors, analyses } = useAppStore();
+// ─── Demo / placeholder data ──────────────────────────────────────────────────
+const DEMO_COMPETITORS_COUNT = 24;
+const DEMO_ADS_ANALYZED      = 1847;
+const DEMO_ADS_GENERATED     = 312;
+const DEMO_COST_USD          = 482.60;
+
+export default function AnalyticsDashboard() {
+  const [useDemoData, setUseDemoData] = useState(false);
+
+  // ── Real store data ──────────────────────────────────────────────────────────
+  const { competitors, analyses, usage } = useAppStore();
   const variations = useGenerateStore((s) => s.variations);
 
-  const completedVariations = variations.filter(
-    (v) => v.status === "completed" || v.status === "approved"
-  );
-  const approvedVariations = variations.filter((v) => v.status === "approved");
-  const approvalRate =
-    completedVariations.length > 0
-      ? Math.round((approvedVariations.length / completedVariations.length) * 100)
-      : 0;
+  // ── KPI values — real or demo ────────────────────────────────────────────────
+  const competitorsCount = useDemoData ? DEMO_COMPETITORS_COUNT : competitors.length;
+  const adsAnalyzed      = useDemoData ? DEMO_ADS_ANALYZED      : usage.adsAnalyzed;
+  const adsGenerated     = useDemoData ? DEMO_ADS_GENERATED     : usage.adsGenerated;
+  const costUsd          = useDemoData ? DEMO_COST_USD          : usage.generationCostUsd;
 
-  const stats = [
-    {
-      label: "Competitors Tracked",
-      value: competitors.length,
-      icon: Eye,
-      color: "text-blue-400",
-    },
-    {
-      label: "Ads Analyzed",
-      value: usage.adsAnalyzed,
-      icon: Brain,
-      color: "text-purple-400",
-    },
-    {
-      label: "Ads Generated",
-      value: usage.adsGenerated,
-      icon: ImageIcon,
-      color: "text-green-400",
-    },
-    {
-      label: "Generation Cost",
-      value: `$${usage.generationCostUsd.toFixed(2)}`,
-      icon: DollarSign,
-      color: "text-yellow-400",
-    },
-  ];
-
-  const analysisEntries = Object.entries(analyses);
-  const topAnalyses = analysisEntries
-    .sort(([, a], [, b]) => b.overallScore - a.overallScore)
-    .slice(0, 5);
+  // ── Approval rate (for KPI ring gauge label) ─────────────────────────────────
+  const completed = variations.filter(v => v.status === "completed" || v.status === "approved");
+  const approved  = variations.filter(v => v.status === "approved");
+  const approvalRate = useDemoData
+    ? 52
+    : (completed.length > 0 ? Math.round((approved.length / completed.length) * 100) : 0);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <BarChart3 className="h-6 w-6 text-primary" />
-          Analytics
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Track your ad engine usage and performance.
-        </p>
-      </div>
+    <motion.div
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+      className="mx-auto"
+    >
+      {/* ── Page header ─────────────────────────────────────────────────────── */}
+      <motion.div variants={fadeUp} className="flex items-end justify-between mb-6">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-[0.02em] flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 text-accent" />
+            Analytics
+          </h1>
+          <p className="text-[13px] text-text-secondary mt-0.5 tracking-wide">
+            Track your ad engine usage and performance
+          </p>
+        </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
-                </div>
-                <stat.icon className={`h-8 w-8 ${stat.color} opacity-50`} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Session Performance */}
-        <Card>
-          <CardHeader>
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              Generation Performance
-            </h3>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-3xl font-bold">{approvalRate}%</p>
-                <p className="text-xs text-muted-foreground">Approval Rate</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold">{usage.adsGenerated}</p>
-                <p className="text-xs text-muted-foreground">Total Generated</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold">{approvedVariations.length}</p>
-                <p className="text-xs text-muted-foreground">Approved</p>
-              </div>
-            </div>
-
-            {/* Cost per ad */}
-            <div className="p-3 rounded-lg bg-muted text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Avg cost per generated ad</span>
-                <span>
-                  {usage.adsGenerated > 0
-                    ? `$${(usage.generationCostUsd / usage.adsGenerated).toFixed(3)}`
-                    : "$0.00"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total generation spend</span>
-                <span>${usage.generationCostUsd.toFixed(2)}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Top Analyzed Ads */}
-        <Card>
-          <CardHeader>
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Top Analyzed Ads
-            </h3>
-          </CardHeader>
-          <CardContent>
-            {topAnalyses.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No ads analyzed yet. Start analyzing from the Ad Feed.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {topAnalyses.map(([adId, analysis]) => (
-                  <div key={adId} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                    <div className="text-lg font-bold text-primary w-8 text-center">
-                      {analysis.overallScore}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {analysis.conversionElements.hook.text || "Ad"}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {analysis.conversionElements.visualHierarchy.layoutType} •{" "}
-                        {analysis.conversionElements.hook.type}
-                      </p>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">
-                      Relevance: {analysis.relevanceToBrand.score}/10
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+        <div className="flex items-center gap-2">
+          {/* Demo data toggle */}
+          <button
+            onClick={() => setUseDemoData((v) => !v)}
+            title={useDemoData ? "Showing demo data — click to use real data" : "Click to preview with demo data"}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-all duration-100",
+              useDemoData
+                ? "bg-accent-muted border-accent text-accent"
+                : "bg-card-bg border-border-subtle text-text-secondary hover:border-border-default hover:text-text-primary"
             )}
-          </CardContent>
-        </Card>
+          >
+            <FlaskConical size={12} />
+            {useDemoData ? "Demo on" : "Demo data"}
+          </button>
 
-        {/* Recently Generated Ads */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <h3 className="text-sm font-semibold flex items-center gap-2">
-              <ImageIcon className="h-4 w-4 text-primary" />
-              Recently Generated Ads
-            </h3>
-          </CardHeader>
-          <CardContent>
-            {completedVariations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No ads generated yet. Go to Generate to create your first ad.
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {completedVariations.slice(0, 12).map((v) => (
-                  <div key={v.id} className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border group">
-                    {v.imageDataUrl && (
-                      <Image src={v.imageDataUrl} alt="" fill className="object-cover" unoptimized />
-                    )}
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 p-2">
-                      <div className="flex items-center justify-between">
-                        <Badge
-                          className={
-                            v.status === "approved"
-                              ? "bg-green-500/20 text-green-400 text-[9px]"
-                              : "bg-zinc-500/20 text-zinc-400 text-[9px]"
-                          }
-                        >
-                          {v.status}
-                        </Badge>
-                        <span className="text-[9px] text-zinc-400">{v.label}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+          <select className="bg-card-bg border border-border-subtle rounded-sm px-3 py-1.5 text-xs font-medium text-text-secondary cursor-pointer hover:border-border-default transition-colors">
+            <option>Last 30 days</option>
+            <option>Last 7 days</option>
+            <option>Last 90 days</option>
+          </select>
+          <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card-bg text-text-secondary border border-border-subtle rounded-sm text-xs font-medium transition-colors hover:border-border-default hover:text-text-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            Filters
+          </button>
+          <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card-bg text-text-secondary border border-border-subtle rounded-sm text-xs font-medium transition-colors hover:border-border-default hover:text-text-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export
+          </button>
+        </div>
+      </motion.div>
+
+      {/* ── KPI cards ───────────────────────────────────────────────────────── */}
+      <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 mb-5">
+
+        <KPICard label="Competitors tracked" icon={Activity} iconVariant="purple">
+          <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-2">
+            {competitorsCount}
+          </div>
+          <div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium font-mono px-2 py-0.5 rounded-full bg-winning-bg text-winning-text">
+              +{useDemoData ? 3 : Math.max(0, competitors.length)}
+            </span>
+            <span className="text-[10px] text-text-tertiary ml-1.5">this week</span>
+          </div>
+          <KPISparkline />
+        </KPICard>
+
+        <KPICard label="Ads analyzed" icon={LineChart} iconVariant="blue">
+          <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-2">
+            {adsAnalyzed.toLocaleString()}
+          </div>
+          <div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium font-mono px-2 py-0.5 rounded-full bg-winning-bg text-winning-text">
+              +{useDemoData ? "12.4%" : `${usage.adsAnalyzed}`}
+            </span>
+            <span className="text-[11px] text-text-tertiary ml-1.5">vs last period</span>
+          </div>
+          <KPIBarChart />
+        </KPICard>
+
+        <KPICard label="Ads generated" icon={Box} iconVariant="green">
+          <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-0.5">
+            {adsGenerated}
+          </div>
+          <div className="text-[11px] text-text-tertiary mb-1">
+            {approvalRate}% approval rate
+          </div>
+          <KPIRingGauge />
+        </KPICard>
+
+        <KPICard label="Generation cost" icon={DollarSign} iconVariant="amber">
+          <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-1.5">
+            ${Math.floor(costUsd).toLocaleString()}
+            <span className="text-[18px] text-text-tertiary">
+              .{String(costUsd.toFixed(2).split(".")[1])}
+            </span>
+          </div>
+          <div>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium font-mono px-2 py-0.5 rounded-full bg-winning-bg text-winning-text">
+              {useDemoData ? "-3.1%" : (costUsd > 0 ? `$${costUsd.toFixed(2)}` : "$0.00")}
+            </span>
+            <span className="text-[11px] text-text-tertiary ml-1.5">vs last period</span>
+          </div>
+          <KPITrendLine />
+        </KPICard>
+
+      </motion.div>
+
+      {/* ── Panel row ───────────────────────────────────────────────────────── */}
+      <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3.5 mb-5">
+        <Panel title="Generation performance" icon={Activity} actionText="View all" actionHref="#">
+          {/* PerformanceChart uses its own time-series mock — kept as visual reference */}
+          <PerformanceChart />
+        </Panel>
+
+        <Panel title="Top analyzed ads" icon={Star} actionText="See all" actionHref="#">
+          <TopAdsList
+            analyses={analyses}
+            useDemoData={useDemoData}
+          />
+        </Panel>
+      </motion.div>
+
+      {/* ── Recent generated ads table ───────────────────────────────────────── */}
+      <motion.div variants={fadeUp}>
+        <div className="bg-card-bg border border-card-border rounded-[14px] p-5 lg:p-6 transition-all duration-150 hover:border-border-default">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2 text-sm font-semibold tracking-tight text-text-primary">
+              <Box size={16} className="text-text-tertiary" />
+              Recently generated ads
+            </div>
+            <a
+              href="#"
+              className="flex items-center gap-1 text-xs font-medium text-text-link no-underline transition-opacity duration-100 hover:opacity-75"
+            >
+              View all <ChevronRight size={13} />
+            </a>
+          </div>
+          <RecentAdsTable
+            variations={variations}
+            useDemoData={useDemoData}
+          />
+        </div>
+      </motion.div>
+
+    </motion.div>
   );
 }
