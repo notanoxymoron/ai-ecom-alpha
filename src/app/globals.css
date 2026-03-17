@@ -1,39 +1,4 @@
 @import "tailwindcss";
+@import "../features/ui-facelift/styles/design-tokens.css";
 
-@theme {
-  --color-background: #000000;
-  --color-foreground: #fafafa;
-  --color-card: #0a0a0a;
-  --color-card-foreground: #fafafa;
-  --color-muted: #1a1a1a;
-  --color-muted-foreground: #a1a1aa;
-  --color-border: #1a1a1a;
-  --color-input: #1a1a1a;
-  --color-primary: #a855f7;
-  --color-primary-foreground: #fafafa;
-  --color-accent: #7c3aed;
-  --color-destructive: #ef4444;
-  --color-ring: #a855f7;
-}
-
-body {
-  background-color: #000000;
-  color: var(--color-foreground);
-  font-family: system-ui, -apple-system, sans-serif;
-}
-
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #27272a;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
-}
+/* Any global base overrides here — everything else should be handled in design-tokens.css */

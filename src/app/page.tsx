@@ -1,21 +1,25 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { AdCard } from "@/features/ui-facelift/components/dashboard/ad-card";
+import { AdDetailModal } from "@/features/ui-facelift/components/dashboard/ad-detail-modal";
 import { Filters, type FilterValues } from "@/features/ui-facelift/components/dashboard/filters";
 import { AnalysisModal } from "@/features/ui-facelift/components/dashboard/analysis-modal";
-import { Spinner } from "@/shared/components/ui/spinner";
+import { LoadingState } from "@/shared/components/ui/loading-state";
 import { Button } from "@/shared/components/ui/button";
+import { EmptyState } from "@/shared/components/ui/empty-state";
+import { Spinner } from "@/shared/components/ui/spinner";
 import { useAppStore } from "@/shared/lib/store";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import type { AdAnalysis } from "@/shared/types";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, Plus } from "lucide-react";
 
 export default function HomePage() {
   const router = useRouter();
   const { competitors, analyses } = useAppStore();
+
   const [filters, setFilters] = useState<FilterValues>({
     search: "",
     order: "longest_running",
@@ -25,51 +29,94 @@ export default function HomePage() {
   });
   const [selectedCompetitor, setSelectedCompetitor] = useState("all");
   const [analyzingAd, setAnalyzingAd] = useState<ForeplayAd | null>(null);
-  const [cursor, setCursor] = useState<number | undefined>(undefined);
+  const [detailAd, setDetailAd]       = useState<ForeplayAd | null>(null);
+
+  // Sentinel div that triggers the next page load when it scrolls into view
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const brandIds =
     selectedCompetitor === "all"
       ? competitors.map((c) => c.foreplayBrandId)
       : [selectedCompetitor];
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["brand-ads", brandIds, filters, cursor],
-    queryFn: async () => {
-      if (brandIds.length === 0) return null;
+  // ── Infinite query ──────────────────────────────────────────────────────────
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+    error,
+  } = useInfiniteQuery({
+    queryKey: ["brand-ads", brandIds, filters],
+    queryFn: async ({ pageParam }) => {
+      if (brandIds.length === 0) return { data: [], metadata: { cursor: null } };
       const params = new URLSearchParams();
       brandIds.forEach((id) => params.append("brand_ids", id));
-      if (filters.minDays) params.set("running_duration_min_days", filters.minDays);
+      if (filters.minDays)  params.set("running_duration_min_days", filters.minDays);
       if (filters.platform) params.append("publisher_platform", filters.platform);
-      if (filters.niche) params.append("niches", filters.niche);
+      if (filters.niche)    params.append("niches", filters.niche);
       params.set("order", filters.order);
       params.set("display_format", "image");
-      params.set("limit", "30");
-      if (cursor) params.set("cursor", String(cursor));
+      params.set("limit", "24");
+      if (pageParam) params.set("cursor", String(pageParam));
 
       const res = await fetch(`/api/foreplay/brand-ads?${params}`);
-      if (!res.ok) throw new Error("Failed to fetch ads");
+      if (!res.ok) {
+        if (res.status === 429) throw new Error("Rate limit reached — please wait a moment.");
+        throw new Error("Failed to fetch ads");
+      }
       return res.json();
     },
+    initialPageParam: undefined as number | undefined,
+    getNextPageParam: (lastPage) => lastPage?.metadata?.cursor ?? undefined,
     enabled: brandIds.length > 0,
+    staleTime: 3 * 60 * 1000,
+    gcTime:    10 * 60 * 1000,
   });
 
-  const ads: ForeplayAd[] = data?.data ?? [];
+  // ── Flatten all pages and deduplicate by ad.id ─────────────────────────────
+  const ads: ForeplayAd[] = useMemo(() => {
+    const seen = new Set<string>();
+    return (data?.pages ?? [])
+      .flatMap((p) => (p?.data ?? []) as ForeplayAd[])
+      .filter((ad) => {
+        if (seen.has(ad.id)) return false;
+        seen.add(ad.id);
+        return true;
+      });
+  }, [data]);
 
-  const handleAnalyze = useCallback((ad: ForeplayAd) => {
-    setAnalyzingAd(ad);
-  }, []);
+  // ── IntersectionObserver — trigger next page when sentinel is visible ──────
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { rootMargin: "300px" } // prefetch 300px before hitting the bottom
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleAnalyze    = useCallback((ad: ForeplayAd) => setAnalyzingAd(ad), []);
+  const handleOpenDetail = useCallback((ad: ForeplayAd) => setDetailAd(ad), []);
 
   const handleDuplicate = useCallback(
     (ad: ForeplayAd, analysis?: AdAnalysis) => {
       const existingAnalysis = analysis || analyses[ad.id];
-      sessionStorage.setItem(
-        "generate_context",
-        JSON.stringify({
-          ad,
-          analysis: existingAnalysis || null,
-          skipAnalysis: !existingAnalysis,
-        })
-      );
+      sessionStorage.setItem("generate_context", JSON.stringify({
+        ad,
+        analysis: existingAnalysis || null,
+        skipAnalysis: !existingAnalysis,
+      }));
       router.push("/generate");
     },
     [router, analyses]
@@ -81,15 +128,22 @@ export default function HomePage() {
   }));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <LayoutDashboard className="h-6 w-6 text-primary" />
-          Competitor Ad Feed
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Track winning ads from your competitors. Add competitors in the Knowledge Base to get started.
-        </p>
+    <div className="space-y-5">
+      {/* ── Page header ─────────────────────────────────────────────────────── */}
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-semibold tracking-[0.02em] flex items-center gap-2">
+            <LayoutDashboard className="h-6 w-6 text-accent" />
+            Competitor Ad Feed
+          </h1>
+          <p className="text-[13px] text-text-secondary mt-0.5 tracking-wide">
+            Track winning ads from your competitors.
+          </p>
+        </div>
+        <Button onClick={() => router.push("/knowledge-base")} className="shrink-0">
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
+          Add Competitor
+        </Button>
       </div>
 
       <Filters
@@ -100,31 +154,40 @@ export default function HomePage() {
         onCompetitorChange={setSelectedCompetitor}
       />
 
+      {/* ── Content ─────────────────────────────────────────────────────────── */}
       {competitors.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <LayoutDashboard className="h-12 w-12 text-muted-foreground/30 mb-4" />
-          <h3 className="text-lg font-medium">No competitors tracked yet</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-md">
-            Go to the Knowledge Base to add your brand profile and start tracking competitors.
-          </p>
-          <Button className="mt-4" onClick={() => router.push("/knowledge-base")}>
-            Set Up Knowledge Base
-          </Button>
-        </div>
+        <EmptyState
+          illustration="competitor"
+          title="No competitors tracked yet"
+          description="Add your first competitor to start seeing their winning ads here."
+          action={
+            <Button onClick={() => router.push("/knowledge-base")}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              Add Competitor
+            </Button>
+          }
+        />
       ) : isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <Spinner className="h-8 w-8" />
-        </div>
+        <LoadingState message="Scanning competitor ads…" />
       ) : error ? (
-        <div className="text-center py-20">
-          <p className="text-destructive">{(error as Error).message}</p>
-        </div>
+        <EmptyState illustration="ads" title="Something went wrong"
+          description={(error as Error).message} />
       ) : ads.length === 0 ? (
-        <div className="text-center py-20 text-muted-foreground">
-          No ads found with current filters.
-        </div>
+        <EmptyState
+          illustration="filters"
+          title="No ads match your filters"
+          description="Try adjusting your filters or clearing them to see all available ads."
+          action={
+            <Button variant="outline" onClick={() =>
+              setFilters({ search: "", order: "longest_running", minDays: "7", platform: "", niche: "" })
+            }>
+              Clear filters
+            </Button>
+          }
+        />
       ) : (
         <>
+          {/* Ad grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {ads.map((ad) => (
               <AdCard
@@ -133,23 +196,32 @@ export default function HomePage() {
                 analysisScore={analyses[ad.id]?.overallScore}
                 onAnalyze={handleAnalyze}
                 onDuplicate={() => handleDuplicate(ad)}
+                onOpen={handleOpenDetail}
               />
             ))}
           </div>
 
-          {data?.metadata?.cursor && (
-            <div className="flex justify-center pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setCursor(data.metadata.cursor)}
-              >
-                Load More
+          {/* Sentinel + scroll status */}
+          <div ref={sentinelRef} className="flex items-center justify-center py-8">
+            {isFetchingNextPage ? (
+              <div className="flex items-center gap-2 text-[13px] text-text-tertiary">
+                <Spinner className="h-4 w-4" />
+                Loading more ads…
+              </div>
+            ) : hasNextPage ? (
+              <Button variant="outline" size="sm" onClick={() => fetchNextPage()}>
+                Load more
               </Button>
-            </div>
-          )}
+            ) : (
+              <p className="text-[12px] text-text-tertiary">
+                {ads.length} ads — you&apos;re all caught up
+              </p>
+            )}
+          </div>
         </>
       )}
 
+      {/* ── Overlays ────────────────────────────────────────────────────────── */}
       {analyzingAd && (
         <AnalysisModal
           ad={analyzingAd}
@@ -160,6 +232,13 @@ export default function HomePage() {
           }}
         />
       )}
+
+      <AdDetailModal
+        ad={detailAd}
+        onClose={() => setDetailAd(null)}
+        onAnalyze={(ad) => { setDetailAd(null); handleAnalyze(ad); }}
+        onDuplicate={(ad) => { setDetailAd(null); handleDuplicate(ad); }}
+      />
     </div>
   );
 }
