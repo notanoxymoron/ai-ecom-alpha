@@ -3,7 +3,10 @@
 import { useMediaQuery } from "@/features/ui-facelift/lib/use-media-query";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-const data = [
+// Static shape — the area chart shows trend shape only.
+// To make this data-driven we'd need to persist per-month counts in the store,
+// which would be a separate data-layer change. Shape is intentionally decorative.
+const CHART_DATA = [
   { month: "Jan", generated: 18, approved: 12 },
   { month: "Feb", generated: 22, approved: 16 },
   { month: "Mar", generated: 26, approved: 19 },
@@ -18,26 +21,56 @@ const data = [
   { month: "Dec", generated: 46, approved: 38 },
 ];
 
-export function PerformanceChart() {
+interface PerformanceChartProps {
+  /** 0-100 approval rate percentage */
+  approvalRate?: number;
+  /** Total generated variations */
+  totalGenerated?: number;
+  /** Total approved variations */
+  totalApproved?: number;
+  /** Total spend in USD */
+  totalSpendUsd?: number;
+  /** Cost per ad in USD */
+  costPerAdUsd?: number;
+}
+
+export function PerformanceChart({
+  approvalRate = 0,
+  totalGenerated = 0,
+  totalApproved = 0,
+  totalSpendUsd = 0,
+  costPerAdUsd = 0,
+}: PerformanceChartProps) {
   const isMobile = useMediaQuery("(max-width: 767px)");
+
+  const fmtUsd = (v: number) =>
+    v === 0 ? "$0.00" : `$${v.toFixed(2)}`;
 
   return (
     <div>
+      {/* Summary stats */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         <div className="text-center p-3.5 bg-content-bg rounded-[10px]">
-          <div className="font-mono text-[22px] font-semibold tracking-tight text-winning">78%</div>
+          <div className="font-mono text-[22px] font-semibold tracking-tight text-winning">
+            {approvalRate}%
+          </div>
           <div className="text-[11px] text-text-tertiary mt-1">Approval rate</div>
         </div>
         <div className="text-center p-3.5 bg-content-bg rounded-[10px]">
-          <div className="font-mono text-[22px] font-semibold tracking-tight">312</div>
+          <div className="font-mono text-[22px] font-semibold tracking-tight">
+            {totalGenerated.toLocaleString()}
+          </div>
           <div className="text-[11px] text-text-tertiary mt-1">Total generated</div>
         </div>
         <div className="text-center p-3.5 bg-content-bg rounded-[10px]">
-          <div className="font-mono text-[22px] font-semibold tracking-tight">243</div>
+          <div className="font-mono text-[22px] font-semibold tracking-tight">
+            {totalApproved.toLocaleString()}
+          </div>
           <div className="text-[11px] text-text-tertiary mt-1">Approved</div>
         </div>
       </div>
 
+      {/* Legend */}
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5 text-[11px] text-text-secondary">
           <div className="w-2 h-2 rounded-full bg-accent" /> Generated
@@ -47,9 +80,10 @@ export function PerformanceChart() {
         </div>
       </div>
 
+      {/* Area chart — trend shape */}
       <div className="relative rounded-md overflow-hidden bg-content-bg mb-4">
         <ResponsiveContainer width="100%" height={isMobile ? 140 : 200}>
-          <AreaChart data={data} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+          <AreaChart data={CHART_DATA} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="gradGenerated" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#6C5CE7" stopOpacity={0.18} />
@@ -105,14 +139,15 @@ export function PerformanceChart() {
         </ResponsiveContainer>
       </div>
 
+      {/* Footer stats */}
       <div className="flex flex-col">
         <div className="flex items-center justify-between py-2.5 border-b border-border-subtle text-[13px]">
           <span className="text-text-secondary">Avg cost per generated ad</span>
-          <span className="font-mono font-medium">$1.55</span>
+          <span className="font-mono font-medium">{fmtUsd(costPerAdUsd)}</span>
         </div>
         <div className="flex items-center justify-between py-2.5 text-[13px]">
           <span className="text-text-secondary">Total generation spend</span>
-          <span className="font-mono font-medium">$482.60</span>
+          <span className="font-mono font-medium">{fmtUsd(totalSpendUsd)}</span>
         </div>
       </div>
     </div>

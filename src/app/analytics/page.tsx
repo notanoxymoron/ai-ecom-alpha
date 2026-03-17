@@ -37,11 +37,18 @@ export default function AnalyticsDashboard() {
   const costUsd          = useDemoData ? DEMO_COST_USD          : usage.generationCostUsd;
 
   // ── Approval rate (for KPI ring gauge label) ─────────────────────────────────
-  const completed = variations.filter(v => v.status === "completed" || v.status === "approved");
-  const approved  = variations.filter(v => v.status === "approved");
-  const approvalRate = useDemoData
+  const completed     = variations.filter(v => v.status === "completed" || v.status === "approved");
+  const approved      = variations.filter(v => v.status === "approved");
+  const approvalRate  = useDemoData
     ? 52
     : (completed.length > 0 ? Math.round((approved.length / completed.length) * 100) : 0);
+
+  // ── PerformanceChart derived values ──────────────────────────────────────────
+  const perfApprovalRate  = useDemoData ? 78  : approvalRate;
+  const perfTotalGen      = useDemoData ? 312 : adsGenerated;
+  const perfTotalApproved = useDemoData ? 243 : approved.length;
+  const perfSpend         = useDemoData ? 482.60 : costUsd;
+  const perfCostPerAd     = perfTotalGen > 0 ? perfSpend / perfTotalGen : 0;
 
   return (
     <motion.div
@@ -136,7 +143,12 @@ export default function AnalyticsDashboard() {
           <div className="text-[11px] text-text-tertiary mb-1">
             {approvalRate}% approval rate
           </div>
-          <KPIRingGauge />
+          <KPIRingGauge
+            percentage={useDemoData ? 78 : approvalRate}
+            approvedCount={useDemoData ? 243 : approved.length}
+            totalCount={useDemoData ? 312 : completed.length}
+            deltaLabel={useDemoData ? "+8.2%" : undefined}
+          />
         </KPICard>
 
         <KPICard label="Generation cost" icon={DollarSign} iconVariant="amber">
@@ -160,8 +172,13 @@ export default function AnalyticsDashboard() {
       {/* ── Panel row ───────────────────────────────────────────────────────── */}
       <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3.5 mb-5">
         <Panel title="Generation performance" icon={Activity} actionText="View all" actionHref="#">
-          {/* PerformanceChart uses its own time-series mock — kept as visual reference */}
-          <PerformanceChart />
+          <PerformanceChart
+            approvalRate={perfApprovalRate}
+            totalGenerated={perfTotalGen}
+            totalApproved={perfTotalApproved}
+            totalSpendUsd={perfSpend}
+            costPerAdUsd={perfCostPerAd}
+          />
         </Panel>
 
         <Panel title="Top analyzed ads" icon={Star} actionText="See all" actionHref="#">

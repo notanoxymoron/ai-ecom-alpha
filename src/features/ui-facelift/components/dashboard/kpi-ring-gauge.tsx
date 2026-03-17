@@ -2,15 +2,33 @@
 
 import { useEffect, useState } from "react";
 
-export function KPIRingGauge() {
-  const percentage = 78;
+interface KPIRingGaugeProps {
+  /** 0-100 integer — approval rate */
+  percentage?: number;
+  /** Count of approved variations */
+  approvedCount?: number;
+  /** Total generated (completed + approved) */
+  totalCount?: number;
+  /** Comparison string shown below e.g. "+8.2%" */
+  deltaLabel?: string;
+}
+
+export function KPIRingGauge({
+  percentage = 0,
+  approvedCount = 0,
+  totalCount = 0,
+  deltaLabel,
+}: KPIRingGaugeProps) {
   const radius = 20;
   const circumference = 2 * Math.PI * radius;
-  
   const [offset, setOffset] = useState(circumference);
 
   useEffect(() => {
-    setOffset(circumference - (percentage / 100) * circumference);
+    // Animate on mount / whenever percentage changes
+    const t = requestAnimationFrame(() => {
+      setOffset(circumference - (percentage / 100) * circumference);
+    });
+    return () => cancelAnimationFrame(t);
   }, [circumference, percentage]);
 
   return (
@@ -37,12 +55,22 @@ export function KPIRingGauge() {
           </span>
         </div>
       </div>
+
       <div>
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium font-mono px-2 py-0.5 rounded-full bg-winning-bg text-winning-text">
-          +8.2%
-        </span>
+        {deltaLabel && (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium font-mono px-2 py-0.5 rounded-full bg-winning-bg text-winning-text">
+            {deltaLabel}
+          </span>
+        )}
         <span className="text-[11px] text-text-tertiary ml-1.5">vs last period</span>
-        <div className="text-[11px] text-text-tertiary mt-1">243 of 312 approved</div>
+        {totalCount > 0 && (
+          <div className="text-[11px] text-text-tertiary mt-1">
+            {approvedCount} of {totalCount} approved
+          </div>
+        )}
+        {totalCount === 0 && (
+          <div className="text-[11px] text-text-tertiary mt-1">No generations yet</div>
+        )}
       </div>
     </div>
   );

@@ -256,13 +256,22 @@ export default function KnowledgeBasePage() {
         </button>
         <button
           onClick={() => setActiveTab("competitors")}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
             activeTab === "competitors"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Competitors ({competitors.length})
+          Competitors
+          {competitors.length > 0 && (
+            <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold rounded-full transition-colors ${
+              activeTab === "competitors"
+                ? "bg-primary/15 text-primary"
+                : "bg-muted text-muted-foreground"
+            }`}>
+              {competitors.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -485,10 +494,36 @@ export default function KnowledgeBasePage() {
 
       {activeTab === "competitors" && (
         <div className="space-y-4">
-          <Button onClick={() => setShowAddCompetitor(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Competitor
-          </Button>
+          {/* ── Header row ───────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-[15px] font-semibold text-foreground">Tracked Competitors</h2>
+                {competitors.length > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 text-[12px] font-bold rounded-full bg-primary/12 text-primary border border-primary/20">
+                    {competitors.length}
+                  </span>
+                )}
+              </div>
+              {competitors.length > 0 ? (
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  Monitoring&nbsp;
+                  <span className="font-semibold text-foreground">
+                    {competitors.reduce((sum, c) => sum + (c.adCount ?? 0), 0).toLocaleString()}
+                  </span>
+                  &nbsp;ads across&nbsp;
+                  <span className="font-semibold text-foreground">{competitors.length}</span>
+                  &nbsp;{competitors.length === 1 ? "brand" : "brands"}
+                </p>
+              ) : (
+                <p className="text-[12px] text-muted-foreground mt-0.5">No competitors added yet</p>
+              )}
+            </div>
+            <Button onClick={() => setShowAddCompetitor(true)} className="shrink-0">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Competitor
+            </Button>
+          </div>
 
           {competitors.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
