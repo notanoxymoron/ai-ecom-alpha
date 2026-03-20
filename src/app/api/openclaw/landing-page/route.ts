@@ -4,6 +4,7 @@ import { parseLandingPageIntel } from "@/features/openclaw/lib/parsers";
 
 export async function POST(request: NextRequest) {
   try {
+    const apifyToken = request.headers.get("X-Apify-Token") || undefined;
     const { url } = (await request.json()) as { url: string };
 
     if (!url) {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
       Date.now() - startTime < maxWaitMs
     ) {
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      result = await getCrawlStatus(task.task_id);
+      result = await getCrawlStatus(task.task_id, apifyToken);
     }
 
     if (result.status === "failed") {

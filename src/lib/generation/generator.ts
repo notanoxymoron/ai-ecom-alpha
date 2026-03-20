@@ -208,48 +208,69 @@ export async function generateAd(
 
   const body = {
     contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ["IMAGE", "TEXT"],
+    },
   };
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": googleApiKey,
-    },
-    body: JSON.stringify(body),
-  });
+  const maxRetries = 3;
+  let lastError: Error | null = null;
 
-  if (!res.ok) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (attempt > 0) {
+      // Exponential backoff: 2s, 4s
+      await new Promise((r) => setTimeout(r, 2000 * Math.pow(2, attempt - 1)));
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": googleApiKey,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      lastError = null;
+
+      const candidates = data.candidates;
+      if (!candidates || candidates.length === 0) {
+        throw new Error("No candidates returned from Gemini");
+      }
+
+      const responseParts = candidates[0].content?.parts;
+      if (!responseParts) throw new Error("No content parts in Gemini response");
+
+      for (const part of responseParts) {
+        if (part.inlineData) {
+          return {
+            imageBase64: part.inlineData.data,
+            mimeType: part.inlineData.mimeType || "image/png",
+          };
+        }
+        if (part.inline_data) {
+          return {
+            imageBase64: part.inline_data.data,
+            mimeType: part.inline_data.mimeType || part.inline_data.mime_type || "image/png",
+          };
+        }
+      }
+
+      throw new Error("No image generated in Gemini response");
+    }
+
     const errBody = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${errBody}`);
-  }
+    lastError = new Error(`Gemini API error ${res.status}: ${errBody}`);
 
-  const data = await res.json();
-
-  const candidates = data.candidates;
-  if (!candidates || candidates.length === 0) {
-    throw new Error("No candidates returned from Gemini");
-  }
-
-  const responseParts = candidates[0].content?.parts;
-  if (!responseParts) throw new Error("No content parts in Gemini response");
-
-  for (const part of responseParts) {
-    if (part.inlineData) {
-      return {
-        imageBase64: part.inlineData.data,
-        mimeType: part.inlineData.mimeType || "image/png",
-      };
-    }
-    if (part.inline_data) {
-      return {
-        imageBase64: part.inline_data.data,
-        mimeType: part.inline_data.mimeType || part.inline_data.mime_type || "image/png",
-      };
+    // Only retry on transient errors (429, 503)
+    if (res.status !== 429 && res.status !== 503) {
+      throw lastError;
     }
   }
 
-  throw new Error("No image generated in Gemini response");
+  throw lastError || new Error("Gemini API failed after retries");
 }

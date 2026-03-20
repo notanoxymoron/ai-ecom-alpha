@@ -10,10 +10,9 @@ import type {
 
 const BASE_URL = "https://public.api.foreplay.co";
 
-function getApiKey(): string {
-  const key = process.env.FOREPLAY_API_KEY;
-  if (!key) throw new Error("FOREPLAY_API_KEY is not set");
-  return key;
+function getApiKey(override?: string): string {
+  if (!override) throw new Error("Foreplay API key not configured. Please add it in Settings → API Keys.");
+  return override;
 }
 
 function buildParams(params: Record<string, unknown>): URLSearchParams {
@@ -41,7 +40,8 @@ interface FetchOptions {
 async function foreplayFetch<T>(
   path: string,
   params?: Record<string, unknown>,
-  { revalidate = 300 }: FetchOptions = {}
+  { revalidate = 300 }: FetchOptions = {},
+  apiKey?: string
 ): Promise<T> {
   const url = new URL(path, BASE_URL);
   if (params) {
@@ -50,7 +50,7 @@ async function foreplayFetch<T>(
 
   const res = await fetch(url.toString(), {
     headers: {
-      Authorization: getApiKey(),
+      Authorization: getApiKey(apiKey),
       "Content-Type": "application/json",
     },
     // Next.js App Router cache control:
@@ -72,7 +72,8 @@ async function foreplayFetch<T>(
 // --- Discovery Endpoints ---
 
 export async function discoverBrands(
-  params: DiscoverBrandsParams
+  params: DiscoverBrandsParams,
+  apiKey?: string
 ): Promise<ForeplayPaginatedResponse<ForeplayBrand>> {
   return foreplayFetch(
     "/api/discovery/brands",
@@ -82,20 +83,21 @@ export async function discoverBrands(
       limit:  params.limit ?? 20,
       cursor: params.cursor,
     },
-    // Brand lists are relatively stable — cache for 10 min
-    { revalidate: params.cursor ? 0 : 600 }
+    { revalidate: params.cursor ? 0 : 600 },
+    apiKey
   );
 }
 
 export async function discoverAds(
-  params: DiscoverAdsParams
+  params: DiscoverAdsParams,
+  apiKey?: string
 ): Promise<ForeplayPaginatedResponse<ForeplayAd>> {
   return foreplayFetch(
     "/api/discovery/ads",
     {
       query:                       params.query,
       niches:                      params.niches,
-      display_format:              params.display_format ?? ["image"],
+      display_format:              params.display_format ?? undefined,
       publisher_platform:          params.publisher_platform,
       running_duration_min_days:   params.running_duration_min_days,
       running_duration_max_days:   params.running_duration_max_days,
@@ -106,15 +108,16 @@ export async function discoverAds(
       cursor:                      params.cursor,
       live:                        params.live,
     },
-    // Discovery is expensive — cache first pages for 5 min, skip for paginated
-    { revalidate: params.cursor ? 0 : 300 }
+    { revalidate: params.cursor ? 0 : 7200 },
+    apiKey
   );
 }
 
 // --- Brand Endpoints ---
 
 export async function getAdsByBrandId(
-  params: BrandAdsParams
+  params: BrandAdsParams,
+  apiKey?: string
 ): Promise<ForeplayPaginatedResponse<ForeplayAd>> {
   return foreplayFetch(
     "/api/brand/getAdsByBrandId",
@@ -129,21 +132,16 @@ export async function getAdsByBrandId(
       start_date:                  params.start_date,
       end_date:                    params.end_date,
       order:                       params.order ?? "newest",
-      // Reduced from 50 to 24 — one full page in the 4-col grid,
-      // costs fewer API credits and loads faster
       limit:                       params.limit ?? 24,
       cursor:                      params.cursor,
     },
-    // Brand feeds change more often — shorter 3-min cache; skip for pagination
-    { revalidate: params.cursor ? 0 : 180 }
+    { revalidate: params.cursor ? 0 : 7200 },
+    apiKey
   );
 }
 
 // --- Ad Endpoints ---
 
-export async function getAdDetails(adId: string): Promise<ForeplayAdResponse> {
-  // Individual ad details are stable — cache for 1 hour
-  return foreplayFetch(`/api/ad/${encodeURIComponent(adId)}`, undefined, {
-    revalidate: 3600,
-  });
+export async function getAdDetails(adId: string, apiKey?: string): Promise<ForeplayAdResponse> {
+  return foreplayFetch(`/api/ad/${encodeURIComponent(adId)}`, undefined, { revalidate: 3600 }, apiKey);
 }

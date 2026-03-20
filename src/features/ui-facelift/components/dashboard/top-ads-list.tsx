@@ -16,6 +16,8 @@ interface TopAdsListProps {
   analyses?: Record<string, AdAnalysis>;
   /** When true, always render mock data regardless of real data */
   useDemoData?: boolean;
+  /** Called when a real ad row is clicked */
+  onAdClick?: (adId: string, analysis: AdAnalysis, name: string) => void;
 }
 
 function scoreClasses(score: number) {
@@ -24,7 +26,7 @@ function scoreClasses(score: number) {
   return "bg-losing-bg text-losing-text";
 }
 
-export function TopAdsList({ analyses = {}, useDemoData = false }: TopAdsListProps) {
+export function TopAdsList({ analyses = {}, useDemoData = false, onAdClick }: TopAdsListProps) {
   const hasRealData = !useDemoData && Object.keys(analyses).length > 0;
 
   // ── Empty state (no demo, no analyses yet) ────────────────────────────────
@@ -101,9 +103,11 @@ export function TopAdsList({ analyses = {}, useDemoData = false }: TopAdsListPro
     <div className="flex flex-col gap-2.5">
       {topAds.map(({ adId, name, meta, score }) => {
         const cls = scoreClasses(score);
+        const analysis = analyses[adId];
         return (
           <div
             key={adId}
+            onClick={() => analysis && onAdClick?.(adId, analysis, name)}
             className="flex items-center gap-3 p-2.5 bg-content-bg rounded-md cursor-pointer transition-colors duration-100 hover:bg-[#EFEEEB]"
           >
             {/* Score-tinted icon — thumbnail not stored in AdAnalysis */}

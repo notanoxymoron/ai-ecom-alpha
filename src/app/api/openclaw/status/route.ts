@@ -4,6 +4,7 @@ import { getCrawlStatus } from "@/features/openclaw/lib/openclaw-client";
 export async function GET(request: NextRequest) {
   try {
     const taskId = request.nextUrl.searchParams.get("taskId");
+    const apifyToken = request.headers.get("X-Apify-Token") || undefined;
     if (!taskId) {
       return NextResponse.json(
         { error: "taskId is required" },
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const task = await getCrawlStatus(taskId);
+    const task = await getCrawlStatus(taskId, apifyToken);
 
     const mappedStatus =
       task.status === "queued"

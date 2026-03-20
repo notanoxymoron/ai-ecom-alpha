@@ -1,21 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion } from "motion/react";
 import { fadeUp, staggerContainer } from "@/features/ui-facelift/lib/animations";
 import { KPICard } from "@/features/ui-facelift/components/dashboard/kpi-card";
 import { KPISparkline } from "@/features/ui-facelift/components/dashboard/kpi-sparkline";
 import { KPIBarChart } from "@/features/ui-facelift/components/dashboard/kpi-bar-chart";
-import { KPIRingGauge } from "@/features/ui-facelift/components/dashboard/kpi-ring-gauge";
 import { KPITrendLine } from "@/features/ui-facelift/components/dashboard/kpi-trend-line";
 import { Panel } from "@/features/ui-facelift/components/dashboard/panel";
-import { PerformanceChart } from "@/features/ui-facelift/components/dashboard/performance-chart";
+import { PerformanceChart, type PerformanceChartDataPoint } from "@/features/ui-facelift/components/dashboard/performance-chart";
 import { TopAdsList } from "@/features/ui-facelift/components/dashboard/top-ads-list";
-import { RecentAdsTable } from "@/features/ui-facelift/components/dashboard/recent-ads-table";
+import { AnalysisDetailModal } from "@/features/ui-facelift/components/dashboard/analysis-detail-modal";
+import type { AdAnalysis } from "@/shared/types";
 import { useAppStore } from "@/shared/lib/store";
-import { useGenerateStore } from "@/shared/lib/generate-store";
-import { Box, DollarSign, Activity, Star, ChevronRight, BarChart3, LineChart, FlaskConical } from "lucide-react";
-import { cn } from "@/shared/lib/utils";
+import { DollarSign, Activity, Star, BarChart3, LineChart, Download } from "lucide-react";
 
 // ─── Demo / placeholder data ──────────────────────────────────────────────────
 const DEMO_COMPETITORS_COUNT = 24;
@@ -24,11 +22,11 @@ const DEMO_ADS_GENERATED     = 312;
 const DEMO_COST_USD          = 482.60;
 
 export default function AnalyticsDashboard() {
-  const [useDemoData, setUseDemoData] = useState(false);
+  const [selectedAnalysis, setSelectedAnalysis] = useState<{ adId: string; analysis: AdAnalysis; name: string } | null>(null);
+  const useDemoData = false;
 
   // ── Real store data ──────────────────────────────────────────────────────────
-  const { competitors, analyses, usage } = useAppStore();
-  const variations = useGenerateStore((s) => s.variations);
+  const { competitors, analyses, usage, savedAds, generatedAds } = useAppStore();
 
   // ── KPI values — real or demo ────────────────────────────────────────────────
   const competitorsCount = useDemoData ? DEMO_COMPETITORS_COUNT : competitors.length;
@@ -36,12 +34,79 @@ export default function AnalyticsDashboard() {
   const adsGenerated     = useDemoData ? DEMO_ADS_GENERATED     : usage.adsGenerated;
   const costUsd          = useDemoData ? DEMO_COST_USD          : usage.generationCostUsd;
 
-  // ── Approval rate (for KPI ring gauge label) ─────────────────────────────────
-  const completed     = variations.filter(v => v.status === "completed" || v.status === "approved");
-  const approved      = variations.filter(v => v.status === "approved");
+  // ── Approval rate (from persisted generatedAds) ──────────────────────────────
+  const approved      = generatedAds.filter(a => a.status === "approved");
+  const totalGenCount = Math.max(generatedAds.length, adsGenerated);
   const approvalRate  = useDemoData
     ? 52
-    : (completed.length > 0 ? Math.round((approved.length / completed.length) * 100) : 0);
+    : (totalGenCount > 0 ? Math.round((approved.length / totalGenCount) * 100) : 0);
+
+  // ── Monthly chart data (from persisted generatedAds) ────────────────────────
+  const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const perfChartData = useMemo<PerformanceChartDataPoint[]>(() => {
+    if (adsGenerated === 0 && generatedAds.length === 0) return [];
+    const buckets: Record<string, { generated: number; approved: number }> = {};
+    for (const ad of generatedAds) {
+      const d = new Date(ad.createdAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (!buckets[key]) buckets[key] = { generated: 0, approved: 0 };
+      buckets[key].generated++;
+      if (ad.status === "approved") buckets[key].approved++;
+    }
+    // The usage counter (adsGenerated) may be higher than generatedAds.length
+    // because not all generated ads are persisted to the array. Distribute the
+    // untracked count to the most recent month bucket.
+    const trackedTotal = generatedAds.length;
+    const untracked = Math.max(0, adsGenerated - trackedTotal);
+    if (untracked > 0) {
+      const keys = Object.keys(buckets).sort();
+      if (keys.length > 0) {
+        buckets[keys[keys.length - 1]].generated += untracked;
+      } else {
+        // No persisted ads at all — create a bucket for the current month
+        const now = new Date();
+        const key = `${now.getFullYear()}-${now.getMonth()}`;
+        buckets[key] = { generated: adsGenerated, approved: 0 };
+      }
+    }
+    return Object.entries(buckets)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, counts]) => ({
+        month: MONTH_LABELS[parseInt(key.split("-")[1])],
+        ...counts,
+      }));
+  }, [generatedAds, adsGenerated]);
+
+  // ── Export CSV ──────────────────────────────────────────────────────────────
+  const handleExportCsv = () => {
+    const rows: string[][] = [
+      ["Metric", "Value"],
+      ["Competitors tracked", String(competitorsCount)],
+      ["Ads analyzed", String(adsAnalyzed)],
+      ["Ads generated", String(adsGenerated)],
+      ["Approved", String(approved.length)],
+      ["Approval rate", `${approvalRate}%`],
+      ["Generation cost (USD)", costUsd.toFixed(2)],
+      ["Avg cost per ad (USD)", adsGenerated > 0 ? (costUsd / adsGenerated).toFixed(2) : "0.00"],
+      [],
+      ["Generated Ad ID", "Source Ad ID", "Status", "Aspect Ratio", "Created At"],
+      ...generatedAds.map(ad => [
+        ad.id,
+        ad.sourceAdId,
+        ad.status,
+        ad.aspectRatio,
+        ad.createdAt,
+      ]),
+    ];
+    const csvContent = rows.map(r => r.map(c => `"${(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `analytics-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ── PerformanceChart derived values ──────────────────────────────────────────
   const perfApprovalRate  = useDemoData ? 78  : approvalRate;
@@ -51,6 +116,7 @@ export default function AnalyticsDashboard() {
   const perfCostPerAd     = perfTotalGen > 0 ? perfSpend / perfTotalGen : 0;
 
   return (
+    <>
     <motion.div
       variants={staggerContainer}
       initial="initial"
@@ -62,53 +128,32 @@ export default function AnalyticsDashboard() {
         <div>
           <h1 className="text-[22px] font-semibold tracking-[0.02em] flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-accent" />
-            Analytics
+            Analytics Dashboard
           </h1>
           <p className="text-[13px] text-text-secondary mt-0.5 tracking-wide">
             Track your ad engine usage and performance
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Demo data toggle */}
-          <button
-            onClick={() => setUseDemoData((v) => !v)}
-            title={useDemoData ? "Showing demo data — click to use real data" : "Click to preview with demo data"}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-medium border transition-all duration-100",
-              useDemoData
-                ? "bg-accent-muted border-accent text-accent"
-                : "bg-card-bg border-border-subtle text-text-secondary hover:border-border-default hover:text-text-primary"
-            )}
-          >
-            <FlaskConical size={12} />
-            {useDemoData ? "Demo on" : "Demo data"}
-          </button>
-
-          <select className="bg-card-bg border border-border-subtle rounded-sm px-3 py-1.5 text-xs font-medium text-text-secondary cursor-pointer hover:border-border-default transition-colors">
-            <option>Last 30 days</option>
-            <option>Last 7 days</option>
-            <option>Last 90 days</option>
+        <div className="flex flex-wrap items-center gap-2">
+          <select defaultValue="7" className="bg-card-bg border border-border-subtle rounded-sm px-3 py-1.5 text-xs font-medium text-text-secondary cursor-pointer hover:border-border-default transition-colors">
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="60">Last 60 days</option>
+            <option value="90">Last 90 days</option>
           </select>
-          <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card-bg text-text-secondary border border-border-subtle rounded-sm text-xs font-medium transition-colors hover:border-border-default hover:text-text-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-            </svg>
-            Filters
-          </button>
-          <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card-bg text-text-secondary border border-border-subtle rounded-sm text-xs font-medium transition-colors hover:border-border-default hover:text-text-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-card-bg text-text-secondary border border-border-subtle rounded-sm text-xs font-medium transition-all duration-150 hover:border-accent hover:text-accent hover:bg-accent/5 hover:shadow-sm active:scale-95 cursor-pointer whitespace-nowrap"
+          >
+            <Download size={14} className="shrink-0" />
             Export
           </button>
         </div>
       </motion.div>
 
       {/* ── KPI cards ───────────────────────────────────────────────────────── */}
-      <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5 mb-5">
+      <motion.div variants={fadeUp} className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-5">
 
         <KPICard label="Competitors tracked" icon={Activity} iconVariant="purple">
           <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-2">
@@ -136,21 +181,6 @@ export default function AnalyticsDashboard() {
           <KPIBarChart />
         </KPICard>
 
-        <KPICard label="Ads generated" icon={Box} iconVariant="green">
-          <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-0.5">
-            {adsGenerated}
-          </div>
-          <div className="text-[11px] text-text-tertiary mb-1">
-            {approvalRate}% approval rate
-          </div>
-          <KPIRingGauge
-            percentage={useDemoData ? 78 : approvalRate}
-            approvedCount={useDemoData ? 243 : approved.length}
-            totalCount={useDemoData ? 312 : completed.length}
-            deltaLabel={useDemoData ? "+8.2%" : undefined}
-          />
-        </KPICard>
-
         <KPICard label="Generation cost" icon={DollarSign} iconVariant="amber">
           <div className="font-mono text-[28px] font-semibold tracking-[-0.03em] leading-none text-text-primary mb-1.5">
             ${Math.floor(costUsd).toLocaleString()}
@@ -171,8 +201,9 @@ export default function AnalyticsDashboard() {
 
       {/* ── Panel row ───────────────────────────────────────────────────────── */}
       <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3.5 mb-5">
-        <Panel title="Generation performance" icon={Activity} actionText="View all" actionHref="#">
+        <Panel title="Generation performance" icon={Activity}>
           <PerformanceChart
+            chartData={perfChartData}
             approvalRate={perfApprovalRate}
             totalGenerated={perfTotalGen}
             totalApproved={perfTotalApproved}
@@ -181,36 +212,31 @@ export default function AnalyticsDashboard() {
           />
         </Panel>
 
-        <Panel title="Top analyzed ads" icon={Star} actionText="See all" actionHref="#">
+        <Panel title="Top analyzed ads" icon={Star}>
           <TopAdsList
             analyses={analyses}
             useDemoData={useDemoData}
+            onAdClick={(adId, analysis, name) => setSelectedAnalysis({ adId, analysis, name })}
           />
         </Panel>
       </motion.div>
 
-      {/* ── Recent generated ads table ───────────────────────────────────────── */}
-      <motion.div variants={fadeUp}>
-        <div className="bg-card-bg border border-card-border rounded-[14px] p-5 lg:p-6 transition-all duration-150 hover:border-border-default">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2 text-sm font-semibold tracking-tight text-text-primary">
-              <Box size={16} className="text-text-tertiary" />
-              Recently generated ads
-            </div>
-            <a
-              href="#"
-              className="flex items-center gap-1 text-xs font-medium text-text-link no-underline transition-opacity duration-100 hover:opacity-75"
-            >
-              View all <ChevronRight size={13} />
-            </a>
-          </div>
-          <RecentAdsTable
-            variations={variations}
-            useDemoData={useDemoData}
-          />
-        </div>
-      </motion.div>
-
     </motion.div>
+
+    {selectedAnalysis && (() => {
+      const ad = savedAds[selectedAnalysis.adId];
+      return (
+        <AnalysisDetailModal
+          name={selectedAnalysis.name}
+          analysis={selectedAnalysis.analysis}
+          onClose={() => setSelectedAnalysis(null)}
+          imageUrl={ad?.image || ad?.thumbnail || undefined}
+          description={ad?.description}
+          runningDays={ad?.running_duration?.days}
+          platforms={ad?.publisher_platform}
+        />
+      );
+    })()}
+    </>
   );
 }

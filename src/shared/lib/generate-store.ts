@@ -13,6 +13,7 @@ export interface GeneratedVariation {
   label: string;
   aspectRatio: string;
   status: "generating" | "completed" | "approved" | "rejected";
+  rejectionFeedback?: string;
 }
 
 interface GenerateSessionState {

@@ -8,6 +8,7 @@ import type { CrawlOptions } from "@/features/openclaw/types";
 
 export async function POST(request: NextRequest) {
   try {
+    const apifyToken = request.headers.get("X-Apify-Token") || undefined;
     const body = await request.json();
     const {
       source,
@@ -29,10 +30,10 @@ export async function POST(request: NextRequest) {
     let task;
     switch (source) {
       case "meta_ad_library":
-        task = await crawlMetaAdLibrary(query, options);
+        task = await crawlMetaAdLibrary(query, options, apifyToken);
         break;
       case "tiktok_top_ads":
-        task = await crawlTikTokTopAds(query, options);
+        task = await crawlTikTokTopAds(query, options, apifyToken);
         break;
       case "landing_page":
         task = await scrapeLandingPage(query);

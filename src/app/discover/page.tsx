@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { AdCard } from "@/features/ui-facelift/components/dashboard/ad-card";
 import { AdDetailModal } from "@/features/ui-facelift/components/dashboard/ad-detail-modal";
 import { AnalysisModal } from "@/features/ui-facelift/components/dashboard/analysis-modal";
 import { Button } from "@/shared/components/ui/button";
@@ -15,9 +14,17 @@ import { useAppStore } from "@/shared/lib/store";
 import { useRecentSearches, type SavedSearch } from "@/features/discover/hooks/use-recent-searches";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import type { AdAnalysis } from "@/shared/types";
+import { MasonryGrid } from "@/shared/components/masonry-grid";
 import { useRouter } from "next/navigation";
 import { Search, Globe, Clock, X } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+
+// Stable ref for the IntersectionObserver callback — prevents observer recreation on every render
+function useIntersectionCallback(cb: () => void) {
+  const ref = useRef(cb);
+  ref.current = cb;
+  return ref;
+}
 
 // ── Niche options ─────────────────────────────────────────────────────────────
 
@@ -79,23 +86,25 @@ function RecentSearchesDropdown({ searches, onSelect, onRemove, onClearAll }: Re
   );
 }
 
+// ── Module-level credit counter ───────────────────────────────────────────────
+// useRef resets to 0 on every component mount, causing double-charges when the
+// user navigates away and back while React Query still has cached data. A
+// module-level variable persists across mount/unmount within the same session.
+let prevDiscoverAdCount = 0;
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function DiscoverPage() {
   const router = useRouter();
-  const { analyses } = useAppStore();
+  const { analyses, apiKeys, discoverSearch, setDiscoverSearch, incrementUsage } = useAppStore();
   const { searches, addSearch, removeSearch, clearAll } = useRecentSearches();
 
-  // ── Local search state ────────────────────────────────────────────────────
-  const [query,   setQuery]   = useState("");
-  const [niche,   setNiche]   = useState("");
-  const [minDays, setMinDays] = useState("14");
-  const [order,   setOrder]   = useState("longest_running");
-
-  // "committed" is non-null only after the user clicks Search
-  const [committed, setCommitted] = useState<{
-    query: string; niche: string; minDays: string; order: string;
-  } | null>(null);
+  // ── Search state (persisted in store across tab switches) ─────────────────
+  const { query, niche, order, committed } = discoverSearch;
+  const setQuery   = (v: string) => setDiscoverSearch({ query: v });
+  const setNiche   = (v: string) => setDiscoverSearch({ niche: v });
+  const setOrder   = (v: string) => setDiscoverSearch({ order: v });
+  const setCommitted = (v: typeof committed) => setDiscoverSearch({ committed: v });
 
   // Dropdown visibility
   const [showRecent, setShowRecent] = useState(false);
@@ -109,12 +118,12 @@ export default function DiscoverPage() {
 
   // ── Search action ─────────────────────────────────────────────────────────
   const commitSearch = useCallback(
-    (params = { query, niche, minDays, order }) => {
+    (params = { query, niche, order }) => {
       setCommitted(params);
       setShowRecent(false);
       addSearch(params);
     },
-    [query, niche, minDays, order, addSearch]
+    [query, niche, order, addSearch]
   );
 
   const handleSearchClick = () => commitSearch();
@@ -123,9 +132,8 @@ export default function DiscoverPage() {
   const handleSelectRecent = (s: SavedSearch) => {
     setQuery(s.query);
     setNiche(s.niche);
-    setMinDays(s.minDays);
     setOrder(s.order);
-    commitSearch({ query: s.query, niche: s.niche, minDays: s.minDays, order: s.order });
+    commitSearch({ query: s.query, niche: s.niche, order: s.order });
   };
 
   // Close dropdown when clicking outside
@@ -148,51 +156,119 @@ export default function DiscoverPage() {
         const params = new URLSearchParams();
         if (committed.query)   params.set("query", committed.query);
         if (committed.niche)   params.append("niches", committed.niche);
-        if (committed.minDays) params.set("running_duration_min_days", committed.minDays);
         params.set("order", committed.order);
-        params.set("display_format", "image");
+        // When sorting by longest running, require at least 1 day so the API
+        // doesn't return freshly-indexed 0-day ads that break the sort order.
+        if (committed.order === "longest_running") {
+          params.set("running_duration_min_days", "1");
+        }
         params.set("limit", "24");
         if (pageParam) params.set("cursor", String(pageParam));
 
-        const res = await fetch(`/api/foreplay/discover-ads?${params}`);
+        const headers: Record<string, string> = {};
+        if (apiKeys.foreplayKey) headers["X-Foreplay-Key"] = apiKeys.foreplayKey;
+        const res = await fetch(`/api/foreplay/discover-ads?${params}`, { headers });
         if (!res.ok) {
           if (res.status === 429) throw new Error("Rate limit reached — please wait a moment.");
-          throw new Error("Failed to discover ads");
+          const body = await res.json().catch(() => ({}));
+          const raw = body.error || "";
+          if (raw.includes("402") || raw.includes("Insufficient credits") || raw.includes("remaining_credits")) {
+            throw new Error("Foreplay API credits exhausted. Please upgrade your plan or wait for your credit reset.");
+          }
+          throw new Error(raw || "Failed to discover ads");
         }
         return res.json();
       },
       initialPageParam: undefined as number | undefined,
-      getNextPageParam: (lastPage) => lastPage?.metadata?.cursor ?? undefined,
+      getNextPageParam: (lastPage, allPages) => {
+        // Stop if the page returned no data at all
+        if (!lastPage?.data?.length) return undefined;
+        // Stop if the page returned fewer results than requested — the API
+        // has no more results. Following a stale cursor would waste credits.
+        if (lastPage.data.length < 24) return undefined;
+
+        // Stop if every ad in this page is a duplicate of a previous page.
+        // Some sort orders (e.g. longest_running) can return overlapping
+        // results across cursor boundaries, burning credits for no new ads.
+        const previousIds = new Set(
+          allPages.slice(0, -1).flatMap((p) => (p?.data ?? []).map((ad: ForeplayAd) => ad.id))
+        );
+        const hasNewAds = lastPage.data.some((ad: ForeplayAd) => !previousIds.has(ad.id));
+        if (!hasNewAds) return undefined;
+
+        return lastPage?.metadata?.cursor ?? undefined;
+      },
       enabled: !!committed,
-      staleTime: 5 * 60 * 1000,
-      gcTime:    15 * 60 * 1000,
+      staleTime: 2 * 60 * 60 * 1000,   // 2 hours — discover results are stable within a session
+      gcTime:    4 * 60 * 60 * 1000,   // 4 hours — keep cache alive for a full work session
     });
 
-  // ── Flatten + deduplicate ─────────────────────────────────────────────────
+  // ── Flatten, deduplicate, filter, and sort ───────────────────────────────
   const ads: ForeplayAd[] = useMemo(() => {
     const seen = new Set<string>();
-    return (data?.pages ?? [])
+    const filtered = (data?.pages ?? [])
       .flatMap((p) => (p?.data ?? []) as ForeplayAd[])
       .filter((ad) => {
+        // Skip duplicates
         if (seen.has(ad.id)) return false;
         seen.add(ad.id);
+        // Skip ads with no preview image
+        if (!ad.image && !ad.thumbnail) return false;
         return true;
       });
-  }, [data]);
+
+    // Enforce client-side sort when "longest_running" is selected,
+    // since the API doesn't always return results in the correct order
+    if (committed?.order === "longest_running") {
+      const liveDays = (ad: ForeplayAd) =>
+        ad.live && ad.started_running
+          ? Math.floor((Date.now() - new Date(ad.started_running).getTime()) / 86_400_000)
+          : (ad.running_duration?.days ?? 0);
+      filtered.sort((a, b) => liveDays(b) - liveDays(a));
+    }
+
+    return filtered;
+  }, [data, committed?.order]);
+
+  // ── Credit tracking — charge only for genuinely new unique ads ─────────────
+  // Tracking in queryFn would charge for raw API results including duplicates.
+  // Tracking here, against the deduplicated list, means we only ever charge
+  // for ads that actually appear in the UI. When a page returns all duplicates
+  // ads.length doesn't change, so the effect doesn't re-run and 0 credits are charged.
+  useEffect(() => {
+    // Reset tracking when a new search resets the list to empty
+    if (ads.length === 0) {
+      prevDiscoverAdCount = 0;
+      return;
+    }
+    const newUniqueCount = ads.length - prevDiscoverAdCount;
+    if (newUniqueCount > 0) {
+      incrementUsage("foreplayCreditsUsed", newUniqueCount);
+      prevDiscoverAdCount = ads.length;
+    }
+  }, [ads.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Infinite scroll ───────────────────────────────────────────────────────
+  // Stable-ref pattern: observer is created once, always reads latest state.
+  // Avoids rapid re-firing that happened when observer was recreated on every
+  // hasNextPage / isFetchingNextPage state change.
+  const intersectCb = useIntersectionCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+  });
+
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
+        if (entries[0].isIntersecting) intersectCb.current();
       },
-      { rootMargin: "300px" }
+      { rootMargin: "0px" }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // create observer once; latest values accessed via ref
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleOpenDetail = useCallback((ad: ForeplayAd) => setDetailAd(ad), []);
@@ -254,17 +330,10 @@ export default function DiscoverPage() {
           ))}
         </Select>
 
-        <Select value={minDays} onChange={(e) => setMinDays(e.target.value)} className="w-32">
-          <option value="">Any duration</option>
-          <option value="7">7+ days</option>
-          <option value="14">14+ days</option>
-          <option value="30">30+ days</option>
-          <option value="60">60+ days</option>
-        </Select>
-
         <Select value={order} onChange={(e) => setOrder(e.target.value)} className="w-40">
           <option value="longest_running">Longest Running</option>
           <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
           <option value="most_relevant">Most Relevant</option>
         </Select>
 
@@ -280,11 +349,11 @@ export default function DiscoverPage() {
           <div className="flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-full bg-accent/10 border border-accent/20 text-accent">
             <Search size={10} />
             <span className="font-medium">
-              {[committed.query, committed.niche && committed.niche.charAt(0).toUpperCase() + committed.niche.slice(1), committed.minDays && `${committed.minDays}+ days`]
+              {[committed.query, committed.niche && committed.niche.charAt(0).toUpperCase() + committed.niche.slice(1)]
                 .filter(Boolean).join(" · ") || "All ads"}
             </span>
             <button
-              onClick={() => { setQuery(""); setNiche(""); setMinDays(""); setCommitted(null); }}
+              onClick={() => { setQuery(""); setNiche(""); setCommitted(null); }}
               className="ml-0.5 hover:opacity-70 transition-opacity"
             >
               <X size={10} />
@@ -314,7 +383,13 @@ export default function DiscoverPage() {
       ) : error ? (
         <EmptyState illustration="ads" title="Search failed"
           description={(error as Error).message}
-          action={<Button onClick={handleSearchClick}>Try again</Button>} />
+          action={
+            (error as Error).message.includes("not configured") ? (
+              <Button onClick={() => router.push("/settings")}>Configure API Key</Button>
+            ) : (
+              <Button onClick={handleSearchClick}>Try again</Button>
+            )
+          } />
       ) : ads.length === 0 ? (
         <EmptyState
           illustration="filters"
@@ -322,7 +397,7 @@ export default function DiscoverPage() {
           description="Try different keywords, a broader niche, or reduce the minimum running days."
           action={
             <Button variant="outline" onClick={() => {
-              setQuery(""); setNiche(""); setMinDays(""); setCommitted(null);
+              setQuery(""); setNiche(""); setCommitted(null);
             }}>
               Clear search
             </Button>
@@ -330,18 +405,7 @@ export default function DiscoverPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {ads.map((ad) => (
-              <AdCard
-                key={ad.id}
-                ad={ad}
-                analysisScore={analyses[ad.id]?.overallScore}
-                onAnalyze={(a) => setAnalyzingAd(a)}
-                onDuplicate={() => handleDuplicate(ad)}
-                onOpen={handleOpenDetail}
-              />
-            ))}
-          </div>
+          <MasonryGrid ads={ads} analyses={analyses} onAnalyze={setAnalyzingAd} onDuplicate={handleDuplicate} onOpen={handleOpenDetail} />
 
           {/* Sentinel */}
           <div ref={sentinelRef} className="flex items-center justify-center py-8">

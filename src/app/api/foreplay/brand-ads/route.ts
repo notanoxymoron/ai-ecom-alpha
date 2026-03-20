@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         status: 429,
         headers: {
           "Retry-After":           String(Math.ceil(rl.resetInMs / 1000)),
-          "X-RateLimit-Limit":     "30",
+          "X-RateLimit-Limit":     "300",
           "X-RateLimit-Remaining": "0",
         },
       }
@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Parameter parsing ────────────────────────────────────────────────────────
+  const foreplayKey = request.headers.get("X-Foreplay-Key") || undefined;
   const params   = request.nextUrl.searchParams;
   const brandIds = params.getAll("brand_ids");
 
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
       order:                     (params.get("order") as "newest" | "oldest" | "longest_running" | "most_relevant") || "newest",
       limit,
       cursor,
-    });
+    }, foreplayKey);
 
     return NextResponse.json(result, {
       headers: {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
         // First pages are cached; paginated results are not
         "Cache-Control": cursor
           ? "no-store"
-          : "public, s-maxage=180, stale-while-revalidate=60",
+          : "public, s-maxage=7200, stale-while-revalidate=300",
       },
     });
   } catch (error) {

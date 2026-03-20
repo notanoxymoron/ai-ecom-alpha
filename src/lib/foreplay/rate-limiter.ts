@@ -8,7 +8,7 @@
  */
 
 const WINDOW_MS  = 60_000; // 1 minute
-const MAX_PER_IP = 30;     // max requests per IP per window
+const MAX_PER_IP = 300;    // max requests per IP per window
 
 /**  Map<ip, timestamp[]> — each entry is the time (ms) a request arrived */
 const log = new Map<string, number[]>();

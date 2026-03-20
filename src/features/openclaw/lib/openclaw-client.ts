@@ -1,22 +1,16 @@
 import { ApifyClient } from "apify-client";
 import type { OpenClawAgentTask, CrawlOptions } from "../types";
 
-// Initialize Apify client (requires APIFY_API_TOKEN in .env.local)
-function getApifyClient() {
-  const token = process.env.APIFY_API_TOKEN;
-  if (!token) {
-    throw new Error("Missing APIFY_API_TOKEN in environment variables");
+function getApifyClient(tokenOverride?: string) {
+  if (!tokenOverride) {
+    throw new Error("Apify API token not configured. Please add it in Settings → API Keys.");
   }
-  return new ApifyClient({ token });
+  return new ApifyClient({ token: tokenOverride });
 }
 
-export async function getCrawlStatus(taskId: string): Promise<OpenClawAgentTask> {
-  if (!process.env.APIFY_API_TOKEN) {
-    return { task_id: taskId, status: "failed", error: "Missing APIFY_API_TOKEN in .env.local" };
-  }
-
+export async function getCrawlStatus(taskId: string, tokenOverride?: string): Promise<OpenClawAgentTask> {
   try {
-    const client = getApifyClient();
+    const client = getApifyClient(tokenOverride);
     const run = await client.run(taskId).get();
     
     if (!run) {
@@ -60,9 +54,10 @@ export async function getCrawlStatus(taskId: string): Promise<OpenClawAgentTask>
 
 export async function crawlMetaAdLibrary(
   query: string,
-  options: CrawlOptions = {}
+  options: CrawlOptions = {},
+  tokenOverride?: string
 ): Promise<OpenClawAgentTask> {
-  const client = getApifyClient();
+  const client = getApifyClient(tokenOverride);
   const maxResults = options.maxResults ?? 20;
 
   // We provide redundant input keys to cover common Apify Facebook Scraper schema variations.
@@ -83,9 +78,10 @@ export async function crawlMetaAdLibrary(
 
 export async function crawlTikTokTopAds(
   query: string,
-  options: CrawlOptions = {}
+  options: CrawlOptions = {},
+  tokenOverride?: string
 ): Promise<OpenClawAgentTask> {
-  const client = getApifyClient();
+  const client = getApifyClient(tokenOverride);
   const maxResults = options.maxResults ?? 20;
 
   const tiktokAllowedRegions = new Set(["FR","AT","BE","BG","HR","CY","CZ","DK","EE","FI","DE","GR","HU","IS","IE","IT","LV","LI","LT","LU","MT","NL","NO","PL","PT","RO","SK","SI","ES","SE","CH","TR","GB"]);

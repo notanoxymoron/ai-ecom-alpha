@@ -77,41 +77,56 @@ export function Filters({
     filters.minDays,
     filters.platform,
     filters.niche,
-    selectedCompetitor && selectedCompetitor !== "all" ? selectedCompetitor : "",
   ].filter(Boolean).length;
 
   return (
     <>
       {/* ── Compact toolbar row ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px] max-w-[360px]">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none"
-          />
-          <input
-            type="text"
-            placeholder="Search ads..."
-            value={filters.search}
-            onChange={(e) => update("search", e.target.value)}
-            className={cn(
-              "w-full h-8 pl-8 pr-7 bg-card-bg border border-border-subtle rounded-[8px]",
-              "text-[13px] text-text-primary placeholder:text-text-tertiary",
-              "transition-colors duration-100 outline-none",
-              "hover:border-border-default focus:border-border-default",
-              "focus-visible:outline-2 focus-visible:outline-offset-[-1px] focus-visible:outline-accent"
+        {/* Competitor dropdown (replaces search when competitor options are available) */}
+        {competitorOptions && competitorOptions.length > 0 ? (
+          <select
+            value={selectedCompetitor || ""}
+            onChange={(e) => onCompetitorChange?.(e.target.value)}
+            className={cn(inlineSelectCls, "flex-1 min-w-[200px] max-w-[360px]")}
+            style={{ backgroundImage: CHEVRON, backgroundPosition: "right 8px center" }}
+          >
+            <option value="">Select a competitor…</option>
+            <option value="all">All competitors</option>
+            {competitorOptions.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        ) : (
+          /* Search */
+          <div className="relative flex-1 min-w-[200px] max-w-[360px]">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-tertiary pointer-events-none"
+            />
+            <input
+              type="text"
+              placeholder="Search by keyword, brand, or product…"
+              value={filters.search}
+              onChange={(e) => update("search", e.target.value)}
+              className={cn(
+                "w-full h-8 pl-8 pr-7 bg-card-bg border border-border-subtle rounded-[8px]",
+                "text-[13px] text-text-primary placeholder:text-text-tertiary",
+                "transition-colors duration-100 outline-none",
+                "hover:border-border-default focus:border-border-default",
+                "focus-visible:outline-2 focus-visible:outline-offset-[-1px] focus-visible:outline-accent"
+              )}
+            />
+            {filters.search && (
+              <button
+                onClick={() => update("search", "")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary p-0.5 flex"
+              >
+                <X size={12} />
+              </button>
             )}
-          />
-          {filters.search && (
-            <button
-              onClick={() => update("search", "")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary p-0.5 flex"
-            >
-              <X size={12} />
-            </button>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Sort — stays inline as a quick access control */}
         <select
@@ -149,23 +164,6 @@ export function Filters({
       {/* ── Filter Sheet ────────────────────────────────────────────────────────── */}
       <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Filters" width="w-[320px]">
         <div className="flex flex-col gap-5">
-
-          {/* Competitor */}
-          {competitorOptions && competitorOptions.length > 0 && (
-            <FilterSection label="Competitor">
-              <select
-                value={selectedCompetitor || "all"}
-                onChange={(e) => onCompetitorChange?.(e.target.value)}
-                className={drawerSelectCls}
-                style={{ backgroundImage: CHEVRON, backgroundPosition: "right 10px center" }}
-              >
-                <option value="all">All competitors</option>
-                {competitorOptions.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </FilterSection>
-          )}
 
           {/* Minimum running days */}
           <FilterSection label="Minimum running days">

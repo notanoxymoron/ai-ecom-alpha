@@ -33,9 +33,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "brandProfile required" }, { status: 400 });
     }
 
-    const googleApiKey = process.env.GOOGLE_AI_API_KEY;
+    const googleApiKey = request.headers.get("X-Google-Ai-Key");
     if (!googleApiKey) {
-      return NextResponse.json({ error: "GOOGLE_AI_API_KEY not configured" }, { status: 500 });
+      return NextResponse.json({ error: "Google AI API key not configured. Please add it in Settings → API Keys." }, { status: 500 });
     }
 
     const result = await generateAd(

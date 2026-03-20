@@ -17,7 +17,7 @@ import { Bot, RefreshCw } from "lucide-react";
 
 export default function OpenClawPage() {
   const router = useRouter();
-  const { analyses } = useAppStore();
+  const { analyses, apiKeys } = useAppStore();
   const [crawlTasks, setCrawlTasks] = useState<CrawlTask[]>([]);
   const [isLaunching, setIsLaunching] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -34,8 +34,11 @@ export default function OpenClawPage() {
       const updates = await Promise.all(
         runningTasks.map(async (task) => {
           try {
+            const apifyHeaders: Record<string, string> = {};
+            if (apiKeys.apifyToken) apifyHeaders["X-Apify-Token"] = apiKeys.apifyToken;
             const res = await fetch(
-              `/api/openclaw/status?taskId=${encodeURIComponent(task.id)}`
+              `/api/openclaw/status?taskId=${encodeURIComponent(task.id)}`,
+              { headers: apifyHeaders }
             );
             if (!res.ok) return task;
             const data = await res.json();
@@ -79,10 +82,13 @@ export default function OpenClawPage() {
     queryFn: async () => {
       const source =
         selectedTask?.source === "tiktok_top_ads" ? "tiktok" : "meta";
+      const apifyHeaders: Record<string, string> = {};
+      if (apiKeys.apifyToken) apifyHeaders["X-Apify-Token"] = apiKeys.apifyToken;
       const res = await fetch(
         `/api/openclaw/results?taskId=${encodeURIComponent(
           selectedTaskId!
-        )}&source=${source}`
+        )}&source=${source}`,
+        { headers: apifyHeaders }
       );
       if (!res.ok) throw new Error("Failed to fetch results");
       return res.json();
@@ -101,9 +107,11 @@ export default function OpenClawPage() {
   ) => {
     setIsLaunching(true);
     try {
+      const crawlHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiKeys.apifyToken) crawlHeaders["X-Apify-Token"] = apiKeys.apifyToken;
       const res = await fetch("/api/openclaw/crawl", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: crawlHeaders,
         body: JSON.stringify({ source, query, options }),
       });
       if (!res.ok) {

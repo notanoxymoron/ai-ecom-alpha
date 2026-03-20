@@ -4,20 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Search, BookMarked, BarChart3,
-  Zap, Bot, AlertTriangle, Users, FlaskConical, TrendingUp,
+  Zap, Bot, AlertTriangle, Users, FlaskConical, TrendingUp, Settings,
 } from "lucide-react";
 import { useAppStore } from "@/shared/lib/store";
 import { cn } from "@/shared/lib/utils";
 
 // ── Page map — matches sidebar nav ─────────────────────────────────────────
 const PAGE_MAP: Record<string, { label: string; icon: React.ElementType; description: string }> = {
-  "/":              { label: "Dashboard",     icon: LayoutDashboard, description: "Competitor ad feed" },
+  "/":              { label: "Feed",           icon: LayoutDashboard, description: "Competitor ad feed" },
   "/discover":      { label: "Discover",      icon: Search,          description: "Search 100M+ ads" },
-  "/knowledge-base":{ label: "Knowledge Base",icon: BookMarked,      description: "Brand & competitor data" },
+  "/knowledge-base":{ label: "Brand",          icon: BookMarked,      description: "Brand & competitor data" },
   "/analytics":     { label: "Analytics",     icon: BarChart3,       description: "Performance & trends" },
   "/generate":      { label: "Generate",      icon: Zap,             description: "AI-powered ad variants" },
   "/openclaw":      { label: "Openclaw",      icon: Bot,             description: "AI intelligence" },
   "/errors":        { label: "Reports",       icon: AlertTriangle,   description: "Error logs" },
+  "/settings":      { label: "Settings",      icon: Settings,        description: "API keys, preferences & data management" },
 };
 
 function useCurrentPage() {
@@ -105,13 +106,13 @@ export function Topbar() {
       {/* ── Right: live workspace stats ───────────────────────────────────── */}
       <div className="flex items-center gap-2 shrink-0 ml-4">
         <StatChip
-          href="/knowledge-base"
+          href="/knowledge-base?tab=competitors"
           icon={Users}
           value={competitorCount}
           label={competitorCount === 1 ? "competitor" : "competitors"}
         />
         <StatChip
-          href="/analytics"
+          href="/"
           icon={FlaskConical}
           value={analysisCount}
           label={analysisCount === 1 ? "analysed" : "analysed"}
@@ -121,7 +122,6 @@ export function Topbar() {
           icon={TrendingUp}
           value={generationCount}
           label={generationCount === 1 ? "variation" : "variations"}
-          accent
         />
       </div>
     </header>

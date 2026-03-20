@@ -7,7 +7,6 @@ import { useState, useEffect, useCallback } from "react";
 export interface SavedSearch {
   query: string;
   niche: string;
-  minDays: string;
   order: string;
   /** Human-readable summary, e.g. "skincare · 30+ days" */
   label: string;
@@ -21,11 +20,10 @@ const MAX_SEARCHES = 8;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildLabel(s: Pick<SavedSearch, "query" | "niche" | "minDays">) {
+function buildLabel(s: Pick<SavedSearch, "query" | "niche">) {
   const parts: string[] = [];
   if (s.query)   parts.push(s.query);
   if (s.niche)   parts.push(s.niche.charAt(0).toUpperCase() + s.niche.slice(1));
-  if (s.minDays) parts.push(`${s.minDays}+ days`);
   return parts.join(" · ") || "All ads";
 }
 

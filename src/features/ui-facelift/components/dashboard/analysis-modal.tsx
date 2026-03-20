@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import type { AdAnalysis } from "@/shared/types";
+import type { AnalysisProvider } from "@/lib/analysis/analyzer";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import { useAppStore } from "@/shared/lib/store";
-import { X, Sparkles, Copy, Loader2 } from "lucide-react";
+import { X, Sparkles, Copy, Loader2, Settings } from "lucide-react";
 import Image from "next/image";
 
 interface AnalysisModalProps {
@@ -14,28 +15,41 @@ interface AnalysisModalProps {
 }
 
 export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) {
-  const { brandProfile, analyses, setAnalysis, incrementUsage } = useAppStore();
+  const { brandProfile, analyses, setAnalysis, incrementUsage, apiKeys, setApiKeys } = useAppStore();
   const existingAnalysis = analyses[ad.id];
   const [analysis, setLocalAnalysis] = useState<AdAnalysis | null>(existingAnalysis || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openaiKey, setOpenaiKey] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("openai_api_key") || "";
-    }
-    return "";
-  });
+  const [provider, setProvider] = useState<AnalysisProvider>(apiKeys.analysisProvider || "openai");
+
+  const keyMap = { openai: apiKeys.openaiKey, claude: apiKeys.claudeKey, openrouter: apiKeys.openrouterKey };
+  const activeKey = keyMap[provider];
+
+  const handleProviderChange = (p: AnalysisProvider) => {
+    setProvider(p);
+    setApiKeys({ analysisProvider: p });
+    setError(null);
+  };
 
   const runAnalysis = async () => {
-    if (!openaiKey) { setError("Please enter your OpenAI API key"); return; }
-    localStorage.setItem("openai_api_key", openaiKey);
+    if (!activeKey) {
+      setError(`missing_key`);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad, brandProfile, openaiApiKey: openaiKey }),
+        body: JSON.stringify({
+          ad,
+          brandProfile,
+          provider,
+          openaiApiKey: provider === "openai" ? activeKey : undefined,
+          claudeApiKey: provider === "claude" ? activeKey : undefined,
+          openrouterApiKey: provider === "openrouter" ? activeKey : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed");
@@ -113,26 +127,50 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
             {!analysis && !loading && (
               <div className="flex flex-col gap-4">
                 <p className="text-[13px] text-text-secondary leading-relaxed">
-                  Analyze this ad with GPT-4o Vision to understand why it converts.
+                  Analyze this ad with AI Vision to understand why it converts.
                 </p>
+
+                {/* Provider toggle */}
                 <div className="flex flex-col gap-1.5">
                   <label style={{ fontSize: "var(--text-xs)", color: "var(--text-tertiary)" }}>
-                    OpenAI API key
+                    AI provider
                   </label>
-                  <input
-                    type="password"
-                    placeholder="sk-..."
-                    value={openaiKey}
-                    onChange={(e) => setOpenaiKey(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && runAnalysis()}
-                    className="h-9 px-3 bg-content-bg border border-border-subtle rounded-md text-text-primary text-[13px] font-mono outline-none transition-all duration-120 focus:border-border-default"
-                  />
+                  <div className="flex gap-1 p-1 bg-content-bg border border-border-subtle rounded-md">
+                    {([
+                      ["openai", "OpenAI GPT-4o"],
+                      ["claude", "Claude Opus"],
+                      ["openrouter", "OpenRouter"],
+                    ] as [AnalysisProvider, string][]).map(([p, label]) => (
+                      <button
+                        key={p}
+                        onClick={() => handleProviderChange(p)}
+                        className={[
+                          "flex-1 h-7 rounded text-[12px] font-medium transition-all duration-120 cursor-pointer",
+                          provider === p
+                            ? "bg-accent text-white"
+                            : "text-text-secondary hover:text-text-primary",
+                        ].join(" ")}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                {error && (
-                  <p className="text-[13px] text-losing">
-                    {error}
-                  </p>
-                )}
+
+                {error === "missing_key" ? (
+                  <div className="flex items-start gap-2.5 px-3 py-2.5 bg-amber-500/8 border border-amber-500/20 rounded-lg">
+                    <Settings size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-[12px] text-amber-300 leading-relaxed">
+                      No {provider === "claude" ? "Claude" : provider === "openrouter" ? "OpenRouter" : "OpenAI"} API key found.{" "}
+                      <a href="/settings" className="underline underline-offset-2 hover:text-amber-200 transition-colors">
+                        Add it in Settings
+                      </a>
+                      {" "}to run analysis.
+                    </p>
+                  </div>
+                ) : error ? (
+                  <p className="text-[13px] text-losing">{error}</p>
+                ) : null}
                 <PrimaryButton onClick={runAnalysis} icon={<Sparkles size={14} />}>
                   Analyze ad
                 </PrimaryButton>
@@ -148,7 +186,7 @@ export function AnalysisModal({ ad, onClose, onDuplicate }: AnalysisModalProps) 
                   className="text-accent animate-spin"
                 />
                 <p style={{ fontSize: "var(--text-sm)", color: "var(--text-secondary)" }}>
-                  Analyzing with GPT-4o Vision...
+                  Analyzing with {provider === "claude" ? "Claude Opus Vision" : provider === "openrouter" ? "OpenRouter Vision" : "GPT-4o Vision"}...
                 </p>
               </div>
             )}

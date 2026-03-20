@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -133,7 +134,7 @@ function FileUpload({
 }
 
 function AddCompetitorModal({ onClose }: { onClose: () => void }) {
-  const { addCompetitor } = useAppStore();
+  const { addCompetitor, apiKeys } = useAppStore();
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ForeplayBrand[]>([]);
@@ -145,7 +146,9 @@ function AddCompetitorModal({ onClose }: { onClose: () => void }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/foreplay/discover-brands?query=${encodeURIComponent(search)}&limit=10`);
+      const headers: Record<string, string> = {};
+      if (apiKeys.foreplayKey) headers["X-Foreplay-Key"] = apiKeys.foreplayKey;
+      const res = await fetch(`/api/foreplay/discover-brands?query=${encodeURIComponent(search)}&limit=10`, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setResults(data.data || []);
@@ -226,16 +229,26 @@ function AddCompetitorModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function KnowledgeBasePage() {
+  return (
+    <Suspense>
+      <KnowledgeBaseContent />
+    </Suspense>
+  );
+}
+
+function KnowledgeBaseContent() {
   const { brandProfile, setBrandProfile, competitors, removeCompetitor } = useAppStore();
   const [showAddCompetitor, setShowAddCompetitor] = useState(false);
-  const [activeTab, setActiveTab] = useState<"brand" | "competitors">("brand");
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") === "competitors" ? "competitors" : "brand";
+  const [activeTab, setActiveTab] = useState<"brand" | "competitors">(initialTab);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <BookOpen className="h-6 w-6 text-primary" />
-          Knowledge Base
+          Brand Knowledge Base
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Teach the engine about your brand and competitors.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
@@ -22,11 +22,12 @@ import {
   SkipForward,
   Eye,
   X,
+  Trash2,
 } from "lucide-react";
 import Image from "next/image";
 
 export default function GeneratePage() {
-  const { brandProfile, setAnalysis, incrementUsage, addErrorLog } = useAppStore();
+  const { brandProfile, setAnalysis, incrementUsage, addErrorLog, apiKeys, generatedAds, addGeneratedAd, removeGeneratedAd } = useAppStore();
 
   // All generate state lives in the dedicated store (survives navigation)
   const {
@@ -43,6 +44,13 @@ export default function GeneratePage() {
     editedPrompt, setEditedPrompt,
     promptEditorOpen, setPromptEditorOpen,
   } = useGenerateStore();
+
+  // Rejection feedback modal state
+  const [rejectingIndex, setRejectingIndex] = useState<number | null>(null);
+  const [rejectionFeedback, setRejectionFeedback] = useState("");
+
+  // Generated ad preview modal
+  const [previewAd, setPreviewAd] = useState<string | null>(null);
 
   const openaiKey = typeof window !== "undefined" ? localStorage.getItem("openai_api_key") || "" : "";
   const setOpenaiKey = (key: string) => localStorage.setItem("openai_api_key", key);
@@ -171,9 +179,11 @@ export default function GeneratePage() {
           promptForVariation = editedPrompt;
         }
 
+        const generateHeaders: Record<string, string> = { "Content-Type": "application/json" };
+        if (apiKeys.googleAiKey) generateHeaders["X-Google-Ai-Key"] = apiKeys.googleAiKey;
         const res = await fetch("/api/generate", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: generateHeaders,
           body: JSON.stringify({
             analysis: localAnalysis,
             brandProfile,
@@ -221,6 +231,51 @@ export default function GeneratePage() {
     link.click();
   };
 
+  const [refiningFeedback, setRefiningFeedback] = useState(false);
+
+  const confirmRejection = async () => {
+    if (rejectingIndex === null) return;
+    const feedback = rejectionFeedback.trim();
+    const updated = [...variations];
+    updated[rejectingIndex] = {
+      ...updated[rejectingIndex],
+      status: "rejected",
+      rejectionFeedback: feedback || undefined,
+    };
+    setVariations(updated);
+
+    // Convert raw feedback into a constructive instruction via LLM, then append
+    if (feedback) {
+      setRefiningFeedback(true);
+      let instruction = feedback;
+      try {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (apiKeys.googleAiKey) headers["X-Google-Ai-Key"] = apiKeys.googleAiKey;
+        const res = await fetch("/api/refine-feedback", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ feedback }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          instruction = data.instruction || feedback;
+        }
+      } catch {
+        // Fallback to raw feedback if refinement fails
+      }
+      setRefiningFeedback(false);
+
+      const existing = overrides.additionalInstructions || "";
+      const newInstructions = existing ? `${existing}\n${instruction}` : instruction;
+      setOverrides({ ...overrides, additionalInstructions: newInstructions });
+      // Reset edited prompt so the feedback gets picked up in next generation
+      setEditedPrompt(null);
+    }
+
+    setRejectingIndex(null);
+    setRejectionFeedback("");
+  };
+
   const imageUrl = selectedAd?.image || selectedAd?.thumbnail;
   const isDirectMode = !localAnalysis;
   const showPromptEditor = promptEditorOpen && step === "configure";
@@ -230,7 +285,7 @@ export default function GeneratePage() {
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Zap className="h-6 w-6 text-primary" />
-          Generate Ad
+          Generate Brand Ads
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Duplicate a winning ad with your brand identity.
@@ -273,7 +328,7 @@ export default function GeneratePage() {
             </p>
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={() => window.location.href = "/"}>
-                Go to Ad Feed
+                Go to Analyze
               </Button>
               <Button variant="outline" onClick={() => window.location.href = "/discover"}>
                 Go to Discover
@@ -643,19 +698,61 @@ export default function GeneratePage() {
                     </Button>
                     <Button
                       size="sm"
-                      variant="ghost"
+                      className="bg-primary text-primary-foreground hover:bg-primary/90"
                       onClick={() => {
                         const updated = [...variations];
                         updated[i] = { ...v, status: "approved" };
                         setVariations(updated);
+                        addGeneratedAd({
+                          id: v.id,
+                          sourceAdId: selectedAd?.id || "",
+                          analysisId: localAnalysis ? selectedAd?.id || "" : "",
+                          imageUrl: v.imageDataUrl,
+                          prompt: editedPrompt || "",
+                          aspectRatio: v.aspectRatio,
+                          variationNumber: i,
+                          status: "approved",
+                          createdAt: new Date().toISOString(),
+                        });
                       }}
                     >
-                      <Check className="h-3.5 w-3.5 mr-1 text-green-500" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setRejectingIndex(i);
+                        setRejectionFeedback("");
+                      }}
+                    >
+                      Reject
                     </Button>
                   </div>
                 )}
                 {v.status === "approved" && (
-                  <Badge className="bg-green-500/10 text-green-500">Approved</Badge>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => downloadImage(v.imageDataUrl, i)}>
+                      <Download className="h-3.5 w-3.5 mr-1" />
+                      Download
+                    </Button>
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-green-500/10 text-green-500 text-sm font-medium">
+                      <Check className="h-3.5 w-3.5" />
+                      Approved
+                    </div>
+                  </div>
+                )}
+                {v.status === "rejected" && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-destructive/10 text-destructive text-sm font-medium w-fit">
+                      <XCircle className="h-3.5 w-3.5" />
+                      Rejected
+                    </div>
+                    {v.rejectionFeedback && (
+                      <p className="text-xs text-muted-foreground italic px-1">&ldquo;{v.rejectionFeedback}&rdquo;</p>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
@@ -679,6 +776,217 @@ export default function GeneratePage() {
               </Button>
             </div>
           )}
+        </div>
+      )}
+      {/* Generated Ads — persisted approved ads */}
+      {generatedAds.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Generated Ads</h2>
+              <p className="text-xs text-muted-foreground">
+                {generatedAds.length} approved ad{generatedAds.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {generatedAds.map((ad) => (
+              <div key={ad.id} className="group relative space-y-2">
+                <div
+                  className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border bg-muted cursor-pointer"
+                  onClick={() => setPreviewAd(ad.id)}
+                >
+                  <Image src={ad.imageUrl} alt="" fill className="object-cover" unoptimized />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-8 p-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const link = document.createElement("a");
+                        link.href = ad.imageUrl;
+                        link.download = `approved-ad-${ad.id}.png`;
+                        link.click();
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-8 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeGeneratedAd(ad.id);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between px-0.5">
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {new Date(ad.createdAt).toLocaleDateString()}
+                  </p>
+                  <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                    {ad.aspectRatio}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Generated Ad Preview Modal */}
+      {previewAd && (() => {
+        const ad = generatedAds.find((a) => a.id === previewAd);
+        if (!ad) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => setPreviewAd(null)}
+          >
+            <div
+              className="relative flex flex-col md:flex-row gap-6 max-w-5xl w-full mx-4 max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="absolute -top-10 right-0 text-white hover:text-white/80 hover:bg-white/10"
+                onClick={() => setPreviewAd(null)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+
+              {/* Image */}
+              <div className="flex-1 flex items-center justify-center min-h-0">
+                <div className="relative w-full max-w-lg aspect-[4/5] rounded-lg overflow-hidden">
+                  <Image src={ad.imageUrl} alt="" fill className="object-contain" unoptimized />
+                </div>
+              </div>
+
+              {/* Details panel */}
+              <Card className="w-full md:w-80 shrink-0 overflow-y-auto max-h-[80vh]">
+                <CardHeader>
+                  <h3 className="text-sm font-semibold">Ad Details</h3>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Status</span>
+                      <div className="flex items-center gap-1.5 text-green-500 text-xs font-medium">
+                        <Check className="h-3 w-3" />
+                        Approved
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Aspect Ratio</span>
+                      <Badge variant="outline" className="text-xs">{ad.aspectRatio}</Badge>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Created</span>
+                      <span className="text-xs">{new Date(ad.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Variation</span>
+                      <span className="text-xs">#{ad.variationNumber + 1}</span>
+                    </div>
+                  </div>
+
+                  {ad.prompt && (
+                    <div className="space-y-1.5 border-t border-border pt-3">
+                      <span className="text-xs font-medium text-muted-foreground">Prompt Used</span>
+                      <p className="text-xs text-muted-foreground bg-muted rounded-md p-2 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                        {ad.prompt}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2 border-t border-border">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        const link = document.createElement("a");
+                        link.href = ad.imageUrl;
+                        link.download = `approved-ad-${ad.id}.png`;
+                        link.click();
+                      }}
+                    >
+                      <Download className="h-3.5 w-3.5 mr-1.5" />
+                      Download
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={() => {
+                        removeGeneratedAd(ad.id);
+                        setPreviewAd(null);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Rejection Feedback Modal */}
+      {rejectingIndex !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-destructive" />
+                Reject {variations[rejectingIndex]?.label}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                What was wrong with this generation? Your feedback will be used to improve the next generation.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                value={rejectionFeedback}
+                onChange={(e) => setRejectionFeedback(e.target.value)}
+                placeholder="e.g., Text is illegible, colors don't match brand, layout is too different from original..."
+                rows={4}
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setRejectingIndex(null); setRejectionFeedback(""); }}
+                  disabled={refiningFeedback}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                  onClick={confirmRejection}
+                  disabled={refiningFeedback}
+                >
+                  {refiningFeedback ? (
+                    <>
+                      <Spinner className="h-3.5 w-3.5 mr-1" />
+                      Processing...
+                    </>
+                  ) : rejectionFeedback.trim() ? "Reject with Feedback" : "Reject without Feedback"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

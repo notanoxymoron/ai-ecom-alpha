@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         status: 429,
         headers: {
           "Retry-After":           String(Math.ceil(rl.resetInMs / 1000)),
-          "X-RateLimit-Limit":     "30",
+          "X-RateLimit-Limit":     "300",
           "X-RateLimit-Remaining": "0",
         },
       }
@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Parameter parsing ────────────────────────────────────────────────────────
+  const foreplayKey = request.headers.get("X-Foreplay-Key") || undefined;
   const params = request.nextUrl.searchParams;
   const cursor = params.get("cursor") ? Number(params.get("cursor")) : undefined;
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
                                    : undefined,
       display_format:            params.getAll("display_format").length
                                    ? params.getAll("display_format")
-                                   : ["image"],
+                                   : undefined,
       publisher_platform:        params.getAll("publisher_platform").length
                                    ? params.getAll("publisher_platform")
                                    : undefined,
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
       limit,
       cursor,
       live:                      params.get("live") === "true" ? true : undefined,
-    });
+    }, foreplayKey);
 
     return NextResponse.json(result, {
       headers: {
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
         // Discovery first pages are stable — cache 5 min; pagination skips cache
         "Cache-Control": cursor
           ? "no-store"
-          : "public, s-maxage=300, stale-while-revalidate=120",
+          : "public, s-maxage=7200, stale-while-revalidate=300",
       },
     });
   } catch (error) {

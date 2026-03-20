@@ -4,6 +4,7 @@ docs/
 
 # next.js
 .next/
+.md/
 out/
 
 # production

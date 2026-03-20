@@ -8,10 +8,8 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const taskId = request.nextUrl.searchParams.get("taskId");
-    const source = request.nextUrl.searchParams.get("source") as
-      | "meta"
-      | "tiktok"
-      | null;
+    const source = request.nextUrl.searchParams.get("source") as "meta" | "tiktok" | null;
+    const apifyToken = request.headers.get("X-Apify-Token") || undefined;
 
     if (!taskId) {
       return NextResponse.json(
@@ -20,7 +18,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const task = await getCrawlStatus(taskId);
+    const task = await getCrawlStatus(taskId, apifyToken);
 
     if (task.status !== "completed" || !task.result) {
       return NextResponse.json({

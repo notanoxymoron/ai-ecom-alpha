@@ -1,203 +1,398 @@
 "use client";
 
-import { cn } from "@/shared/lib/utils";
-import Image from "next/image";
-import { useState } from "react";
-import { Badge } from "@/shared/components/ui/badge";
-import { Button } from "@/shared/components/ui/button";
+import React from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Card } from "@/shared/components/ui/card";
-import { getWinnerTier, getWinnerTierColor, getWinnerTierLabel } from "@/shared/types";
+import { getWinnerTier, getWinnerTierLabel } from "@/shared/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
-import { formatDate } from "@/shared/lib/utils";
-import { Sparkles, Search, ExternalLink, Clock, Play } from "lucide-react";
+import { useAppStore } from "@/shared/lib/store";
+import { Play, ImageIcon, Layers, Trophy, TrendingUp, Zap, Bookmark, ChevronDown, UserPlus, Clock, X, Sparkles, Copy, Check } from "lucide-react";
+import { createPortal } from "react-dom";
 
 interface AdCardProps {
   ad: ForeplayAd;
   analysisScore?: number;
   onAnalyze: (ad: ForeplayAd) => void;
   onDuplicate: (ad: ForeplayAd) => void;
-  /** Fires when user clicks anywhere on the card body (not action buttons) */
   onOpen?: (ad: ForeplayAd) => void;
   selected?: boolean;
+  variant?: "discover" | "saved";
 }
 
-export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate }: AdCardProps) {
-  const days = ad.running_duration?.days ?? 0;
-  const tier = getWinnerTier(days);
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate, variant }: AdCardProps) {
+  const days = ad.live && ad.started_running
+    ? Math.floor((Date.now() - new Date(ad.started_running).getTime()) / 86_400_000)
+    : (ad.running_duration?.days ?? 0);
   const imageUrl = ad.image || ad.thumbnail;
   const hasVideo = !!ad.video;
   const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [copyExpanded, setCopyExpanded] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isSaved = useAppStore((s) => ad.id in s.savedAds);
+  const saveAd = useAppStore((s) => s.saveAd);
+  const unsaveAd = useAppStore((s) => s.unsaveAd);
+  const addCompetitor = useAppStore((s) => s.addCompetitor);
+  const removeCompetitor = useAppStore((s) => s.removeCompetitor);
+  const isCompetitor = useAppStore((s) => s.competitors.some((c) => c.foreplayBrandId === ad.brand_id));
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [dropdownOpen]);
+
+  const format = ad.display_format ?? "image";
+  const domain = ad.link_url
+    ? (() => { try { return new URL(ad.link_url).hostname.replace(/^www\./, ""); } catch { return null; } })()
+    : null;
+
+  // Preload video duration on first hover
+  const metaLoaded = useRef(false);
+  useEffect(() => {
+    if (!isHovered || !hasVideo || !ad.video || metaLoaded.current) return;
+    metaLoaded.current = true;
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.onloadedmetadata = () => {
+      setDuration(probe.duration);
+      probe.remove();
+    };
+    probe.src = ad.video;
+  }, [isHovered, hasVideo, ad.video]);
+
+  const handlePlayClick = useCallback(() => {
+    if (isPlaying) {
+      videoRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      setIsPlaying(true);
+    }
+  }, [isPlaying]);
+
+  const handleVideoLoaded = useCallback(() => {
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+      videoRef.current.play();
+    }
+  }, []);
+
+  // Truncate ad copy
+  const adCopy = ad.description || "";
+  const COPY_LIMIT = 120;
+  const isCopyLong = adCopy.length > COPY_LIMIT;
+  const displayCopy = copyExpanded ? adCopy : adCopy.slice(0, COPY_LIMIT);
 
   return (
-    <Card className="overflow-hidden group hover:border-primary/30 transition-colors">
-      {/* Image / Video */}
-      <div className="relative aspect-[4/5] bg-muted overflow-hidden">
+    <Card
+      className="overflow-hidden group hover:border-primary/30 transition-colors"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* ── 1. Brand header + Days live ─────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+        <div className="flex items-center gap-2 min-w-0">
+          {ad.avatar ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={ad.avatar}
+              alt={ad.name || "Brand"}
+              className="w-7 h-7 rounded-full object-cover shrink-0 border border-border-subtle"
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-muted shrink-0 flex items-center justify-center text-[11px] font-semibold text-text-tertiary border border-border-subtle">
+              {(ad.name || "?").charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span className="text-[13px] font-semibold text-text-primary truncate">
+            {ad.name || "Unknown Brand"}
+          </span>
+        </div>
+
+        <div className="relative flex items-center gap-1.5 shrink-0 group/days">
+          {ad.live && (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          )}
+          <span className="text-[12px] font-semibold text-text-secondary tabular-nums cursor-default">
+            {days}D
+          </span>
+
+          {/* Hover tooltip — start/end dates */}
+          <div className="absolute top-full right-0 mt-1.5 z-30 hidden group-hover/days:block">
+            <div className="bg-[#1a1a2e] text-white rounded-xl shadow-xl px-4 py-3 min-w-[180px] space-y-2 text-[13px]">
+              {/* Arrow */}
+              <div className="absolute -top-1.5 right-4 w-3 h-3 bg-[#1a1a2e] rotate-45" />
+              <div className="flex items-center gap-2 relative">
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                <span className="font-medium">
+                  {new Date(ad.started_running).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 relative">
+                <span className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+                <span className="font-medium">
+                  {ad.live
+                    ? "Still Running..."
+                    : new Date(ad.started_running + days * 86400000).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 relative text-gray-300 border-t border-white/10 pt-2">
+                <Clock size={14} className="shrink-0 opacity-70" />
+                <span className="font-medium">{days} Days</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. Ad Copy ──────────────────────────────────────────────────────── */}
+      {adCopy && (
+        <div className="px-3 pb-2.5">
+          <p className="text-[13px] leading-[1.45] text-text-primary whitespace-pre-line">
+            {displayCopy}
+            {isCopyLong && !copyExpanded && "…"}
+          </p>
+          {isCopyLong && (
+            <button
+              onClick={() => setCopyExpanded(!copyExpanded)}
+              className="text-[12px] font-medium text-text-tertiary hover:text-text-primary mt-0.5 transition-colors"
+            >
+              {copyExpanded ? "Show less" : "Read More"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── 3. Media — natural aspect ratio ─────────────────────────────────── */}
+      <div className="relative bg-muted overflow-hidden cursor-pointer" onClick={() => !isPlaying && setLightboxOpen(true)}>
         {isPlaying && ad.video ? (
           <video
+            ref={videoRef}
             src={ad.video}
             controls
-            autoPlay
-            className="w-full h-full object-cover"
+            className="w-full h-auto block"
             onClick={(e) => e.stopPropagation()}
+            onLoadedMetadata={handleVideoLoaded}
+            onEnded={() => setIsPlaying(false)}
           />
         ) : imageUrl ? (
-          <Image
-            src={imageUrl}
-            alt={ad.name || "Ad"}
-            fill
-            className="object-cover"
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 220px"
-            unoptimized />
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt={ad.name || "Ad"}
+              className="w-full h-auto block"
+              loading="lazy"
+            />
+            {hasVideo && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handlePlayClick(); }}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/25 transition-transform hover:scale-110">
+                  <Play size={18} fill="white" stroke="none" className="ml-0.5" />
+                </div>
+              </button>
+            )}
+          </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-text-tertiary">
+          <div className="flex flex-col items-center justify-center h-48 gap-2 text-text-tertiary">
             <ImageIcon size={22} opacity={0.25} />
             <span className="text-[10px] opacity-35">No preview</span>
           </div>
         )}
 
-        {/* Video ring */}
-        {format === "video" && imageUrl && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-            <div className="w-10 h-10 rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center ring-1 ring-white/20">
-              <Play size={15} fill="white" stroke="none" className="ml-0.5" />
-            </div>
-          </div>
-        )}
-
-        {/* Overlay buttons — hidden while video is playing */}
-        {!isPlaying && (
-          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-            {hasVideo && (
-              <Button size="sm" variant="outline" onClick={() => setIsPlaying(true)} className="bg-black/50">
-                <Play className="h-3.5 w-3.5 mr-1.5" />
-                Play
-              </Button>
-            )}
-            <Button size="sm" onClick={() => onAnalyze(ad)}>
-              <Search className="h-3.5 w-3.5 mr-1.5" />
-              Analyze
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => onDuplicate(ad)} className="bg-black/50">
-              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              Duplicate
-            </Button>
-          </div>
-        )}
-
-        {/* Persistent play badge when video exists and not playing */}
-        {hasVideo && !isPlaying && (
-          <div className="absolute bottom-2 right-2 bg-black/70 rounded-full p-1.5 pointer-events-none">
-            <Play className="h-3 w-3 text-white fill-white" />
-          </div>
-        )}
-
-        {/* ── Winner tier badge — solid, always readable ── */}
-        {tierConfig && (
-          <div className="absolute top-2 left-2">
-            <span
-              className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-[3px] rounded-[5px] tracking-wide whitespace-nowrap"
-              style={{ background: tierConfig.bg, color: tierConfig.text }}
-            >
-              <tierConfig.Icon size={9} strokeWidth={2.5} />
-              {getWinnerTierLabel(tier)}
+        {/* Duration badge — visible on hover */}
+        {hasVideo && !isPlaying && duration !== null && isHovered && (
+          <div className="absolute top-2 right-2 z-10">
+            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-[4px] bg-black/70 text-white backdrop-blur-sm">
+              {formatDuration(duration)}
             </span>
           </div>
         )}
 
-        {/* Analysis score */}
-        {analysisScore !== undefined && (
-          <div className="absolute top-2 right-2">
-            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-[4px] bg-accent-muted text-accent border border-accent/20 backdrop-blur-sm">
-              {analysisScore}/10
-            </span>
-          </div>
-        )}
-
-        {/* Format badge */}
-        {format !== "image" && (
-          <div className="absolute bottom-2 left-2">
+        {/* Carousel badge */}
+        {format === "carousel" && !isPlaying && (
+          <div className="absolute bottom-2 left-2 z-10">
             <span className="flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-[4px] bg-black/60 text-white backdrop-blur-sm">
-              {format === "carousel" ? <Layers size={10} /> : <Play size={10} />}
-              {format === "carousel" ? `${ad.cards?.length ?? 2} slides` : "Video"}
-            </span>
-          </div>
-        )}
-
-        {/* Live badge */}
-        {ad.live && (
-          <div className="absolute bottom-2 right-2">
-            <span className="flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-[4px] bg-winning-bg text-winning-text">
-              <span className="w-1.5 h-1.5 rounded-full bg-winning animate-pulse" />
-              Live
+              <Layers size={10} />
+              {ad.cards?.length ?? 2} slides
             </span>
           </div>
         )}
       </div>
 
-      {/* ── Footer ────────────────────────────────────────────────────────────── */}
-      <div className="px-3 pt-2 pb-3 flex flex-col gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          {domain && (
-            <span className="text-[10px] text-text-tertiary font-mono truncate flex-1 uppercase tracking-wide">
-              {domain}
-            </span>
-          )}
-          {ad.started_running && (
-            <span className="text-[10px] text-text-tertiary font-mono shrink-0">
-              {timeAgo(ad.started_running)}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 min-w-0">
-            {mainPlatform && (
-              <span className="text-[11px] font-medium truncate" style={{ color: platColor }}>
-                {platformLabel(mainPlatform)}
-              </span>
-            )}
-            {platforms.length > 1 && (
-              <span className="text-[10px] text-text-tertiary">+{platforms.length - 1}</span>
-            )}
-          </div>
+      {/* ── 4. Headline / CTA ───────────────────────────────────────────────── */}
+      {(ad.cta_title || domain) && (
+        <div className="px-3 pt-2.5 pb-2 space-y-1.5">
           {ad.cta_title && (
-            <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-[5px] bg-content-bg border border-border-subtle text-text-secondary whitespace-nowrap">
+            <p className="text-[14px] font-semibold leading-snug text-text-primary">
               {ad.cta_title}
-            </span>
+            </p>
+          )}
+          {domain && (
+            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[6px] bg-content-bg border border-border-subtle">
+              <span className="text-[11px] text-text-tertiary font-mono uppercase tracking-wide truncate">
+                {domain}
+              </span>
+            </div>
           )}
         </div>
+      )}
 
-        {ad.niches?.length > 0 && (
-          <div className="flex items-center gap-1 flex-wrap">
-            {ad.niches.slice(0, 2).map((niche) => (
-              <span key={niche}
-                className="text-[10px] text-text-tertiary bg-content-bg border border-border-subtle rounded-[4px] px-1.5 py-px capitalize">
-                {niche}
+      {/* ── 5. Bottom action panels ────────────────────────────────────────── */}
+      {variant === "saved" ? (
+        <div className="px-3 pt-1 pb-3 space-y-1.5">
+          {analysisScore != null ? (
+            <button
+              onClick={() => onAnalyze(ad)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border border-green-500 bg-green-500 text-white text-[12px] font-medium transition-all duration-200 cursor-pointer hover:bg-green-600"
+            >
+              <Sparkles size={14} />
+              Analyzed
+            </button>
+          ) : (
+            <button
+              onClick={() => onAnalyze(ad)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border border-accent bg-accent text-white text-[12px] font-medium transition-all duration-200 cursor-pointer hover:bg-accent-hover"
+            >
+              <Sparkles size={14} />
+              Analyze
+            </button>
+          )}
+          <button
+            onClick={() => onDuplicate(ad)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border border-border-subtle bg-content-bg text-text-secondary text-[12px] font-medium transition-all duration-200 cursor-pointer hover:bg-accent hover:border-accent hover:text-white"
+          >
+            <Copy size={14} />
+            Duplicate this Ad
+          </button>
+        </div>
+      ) : (
+        <div className="px-3 pt-1 pb-3" ref={dropdownRef}>
+          <div className="relative flex">
+            <button
+              onClick={() => {
+                if (isSaved) {
+                  unsaveAd(ad.id);
+                } else {
+                  saveAd(ad);
+                }
+              }}
+              className={`flex-1 flex items-center py-2.5 px-3 rounded-l-[8px] border border-r-0 transition-all duration-200 cursor-pointer ${
+                isSaved
+                  ? "bg-accent border-accent text-white"
+                  : "border-border-subtle bg-content-bg text-text-secondary hover:bg-accent hover:border-accent hover:text-white"
+              }`}
+            >
+              <Bookmark size={14} className={isSaved ? "fill-white" : ""} />
+              <span className="text-[12px] font-medium flex-1 text-center">
+                {isSaved ? "Saved" : "Save to Analyze"}
               </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen((v) => !v);
+              }}
+              className={`flex items-center justify-center px-2.5 rounded-r-[8px] border transition-all duration-200 cursor-pointer ${
+                isSaved
+                  ? "bg-accent border-accent text-white hover:bg-accent-hover"
+                  : "border-border-subtle bg-content-bg text-text-secondary hover:bg-accent hover:border-accent hover:text-white"
+              }`}
+            >
+              <ChevronDown size={13} className={`opacity-60 transition-transform ${dropdownOpen ? "rotate-180" : ""}`} />
+            </button>
 
-function ActionButton({ onClick, icon, label, secondary }: {
-  onClick: (e: React.MouseEvent) => void;
-  icon: React.ReactNode;
-  label: string;
-  secondary?: boolean;
-}) {
-  return (
-    <button onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 h-[30px] px-2.5 rounded-[7px]",
-        "text-[12px] font-semibold cursor-pointer transition-all duration-120",
-        secondary
-          ? "border border-white/30 bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm"
-          : "bg-accent text-white hover:bg-accent-hover border-none"
-      )}>
-      {icon}{label}
-    </button>
+            {/* Dropdown menu */}
+            {dropdownOpen && (
+              <div className="absolute bottom-full mb-1 right-0 z-20 min-w-[180px] border border-border-subtle rounded-[8px] shadow-lg py-1 bg-content-bg">
+                <button
+                  onClick={() => {
+                    if (isCompetitor) {
+                      removeCompetitor(`comp-${ad.brand_id}`);
+                    } else {
+                      addCompetitor({
+                        id: `comp-${ad.brand_id}`,
+                        name: ad.name || "Unknown Brand",
+                        url: ad.link_url || "",
+                        foreplayBrandId: ad.brand_id,
+                        facebookPageId: null,
+                        avatar: ad.avatar,
+                        notes: "",
+                        trackingSince: new Date().toISOString(),
+                        adCount: 0,
+                      });
+                    }
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] font-medium cursor-pointer transition-all duration-200 rounded-[6px] ${
+                    isCompetitor
+                      ? "bg-accent text-white hover:bg-accent-hover"
+                      : "text-text-primary hover:bg-accent hover:text-white"
+                  }`}
+                >
+                  <UserPlus size={14} />
+                  {isCompetitor ? "Remove Competitor" : "Add Competitor"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Media lightbox ──────────────────────────────────────────────────── */}
+      {lightboxOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setLightboxOpen(false)}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+          >
+            <X size={20} />
+          </button>
+
+          {/* Media content */}
+          <div className="max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            {hasVideo && ad.video ? (
+              <video
+                src={ad.video}
+                controls
+                autoPlay
+                className="max-w-[90vw] max-h-[90vh] rounded-lg"
+              />
+            ) : imageUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={imageUrl}
+                alt={ad.name || "Ad"}
+                className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+              />
+            ) : null}
+          </div>
+        </div>,
+        document.body
+      )}
+    </Card>
   );
 }
