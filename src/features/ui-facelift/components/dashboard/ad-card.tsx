@@ -258,23 +258,17 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate, variant }: A
       {/* ── 5. Bottom action panels ────────────────────────────────────────── */}
       {variant === "saved" ? (
         <div className="px-3 pt-1 pb-3 space-y-1.5">
-          {analysisScore != null ? (
-            <button
-              onClick={() => onAnalyze(ad)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border border-green-500 bg-green-500 text-white text-[12px] font-medium transition-all duration-200 cursor-pointer hover:bg-green-600"
-            >
-              <Sparkles size={14} />
-              Analyzed
-            </button>
-          ) : (
-            <button
-              onClick={() => onAnalyze(ad)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border border-accent bg-accent text-white text-[12px] font-medium transition-all duration-200 cursor-pointer hover:bg-accent-hover"
-            >
-              <Sparkles size={14} />
-              Analyze
-            </button>
-          )}
+          <button
+            onClick={() => onAnalyze(ad)}
+            className={`w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border text-[12px] font-medium transition-all duration-200 cursor-pointer ${
+              analysisScore != null
+                ? "border-accent bg-accent text-white hover:bg-accent-hover"
+                : "border-border-subtle bg-content-bg text-text-secondary hover:bg-accent hover:border-accent hover:text-white"
+            }`}
+          >
+            <Sparkles size={14} />
+            {analysisScore != null ? "Analyzed" : "Analyze this Ad"}
+          </button>
           <button
             onClick={() => {
               if (isCompetitor) {
@@ -300,7 +294,7 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate, variant }: A
             }`}
           >
             <UserPlus size={14} />
-            {isCompetitor ? "Remove Competitor" : "Add Competitor"}
+            {isCompetitor ? "Remove Competitor" : "Add this Competitor"}
           </button>
           <button
             onClick={() => onDuplicate(ad)}
@@ -328,40 +322,6 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate, variant }: A
           >
             <Bookmark size={14} className={isSaved ? "fill-white" : ""} />
             {isSaved ? "Saved" : "Save to Analyze"}
-          </button>
-          <button
-            onClick={() => {
-              if (isCompetitor) {
-                removeCompetitor(`comp-${ad.brand_id}`);
-              } else {
-                addCompetitor({
-                  id: `comp-${ad.brand_id}`,
-                  name: ad.name || "Unknown Brand",
-                  url: ad.link_url || "",
-                  foreplayBrandId: ad.brand_id,
-                  facebookPageId: null,
-                  avatar: ad.avatar,
-                  notes: "",
-                  trackingSince: new Date().toISOString(),
-                  adCount: 0,
-                });
-              }
-            }}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border text-[12px] font-medium transition-all duration-200 cursor-pointer ${
-              isCompetitor
-                ? "border-accent bg-accent text-white hover:bg-accent-hover"
-                : "border-border-subtle bg-content-bg text-text-secondary hover:bg-accent hover:border-accent hover:text-white"
-            }`}
-          >
-            <UserPlus size={14} />
-            {isCompetitor ? "Remove Competitor" : "Add Competitor"}
-          </button>
-          <button
-            onClick={() => onDuplicate(ad)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-[8px] border border-border-subtle bg-content-bg text-text-secondary text-[12px] font-medium transition-all duration-200 cursor-pointer hover:bg-accent hover:border-accent hover:text-white"
-          >
-            <Copy size={14} />
-            Duplicate this Ad
           </button>
         </div>
       )}

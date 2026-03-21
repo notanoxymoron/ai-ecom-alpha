@@ -110,7 +110,7 @@ export function Topbar() {
           label={competitorCount === 1 ? "competitor" : "competitors"}
         />
         <StatChip
-          href="/"
+          href="/analyze"
           icon={FlaskConical}
           value={analysisCount}
           label={analysisCount === 1 ? "analysed" : "analysed"}

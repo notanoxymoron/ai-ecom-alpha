@@ -182,7 +182,7 @@ function DataTab() {
   const handleReset = () => {
     if (confirmReset) {
       resetStore();
-      router.push("/");
+      router.push("/discover");
     } else {
       setConfirmReset(true);
     }

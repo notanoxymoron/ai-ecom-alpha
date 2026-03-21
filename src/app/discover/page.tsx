@@ -108,7 +108,7 @@ export default function DiscoverPage() {
   const setCommitted = (v: typeof committed) => setDiscoverSearch({ committed: v });
 
   // Media type filter
-  const [mediaType, setMediaType] = useState<"image" | "video" | "all">("image");
+  const [mediaType, setMediaType] = useState<"image" | "video" | "all">("all");
 
   // Dropdown visibility
   const [showRecent, setShowRecent] = useState(false);

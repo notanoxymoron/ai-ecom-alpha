@@ -483,7 +483,7 @@ export default function GeneratePage() {
               Select a competitor ad from the Ad Feed or Discover page, then come back here to generate.
             </p>
             <div className="flex gap-3 justify-center">
-              <Button variant="outline" onClick={() => window.location.href = "/"}>
+              <Button variant="outline" onClick={() => window.location.href = "/analyze"}>
                 Go to Analyze
               </Button>
               <Button variant="outline" onClick={() => window.location.href = "/discover"}>

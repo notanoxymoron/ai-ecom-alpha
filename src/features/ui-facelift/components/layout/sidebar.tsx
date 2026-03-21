@@ -20,7 +20,7 @@ import { GoldRing } from "@/shared/components/gold-ring";
 
 const mainNavItems = [
   { href: "/discover", label: "Discover", icon: Search, badge: "100M+" },
-  { href: "/", label: "Analyze", icon: LayoutDashboard },
+  { href: "/analyze", label: "Analyze", icon: LayoutDashboard },
   { href: "/generate", label: "Generate", icon: Zap, badge: "AI" },
 ];
 
@@ -59,7 +59,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
     : "GO";
 
   const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    pathname.startsWith(href);
 
   return (
     <aside className="top-0 sticky flex flex-col bg-sidebar-bg border-sidebar-border border-r w-full h-screen overflow-hidden">
