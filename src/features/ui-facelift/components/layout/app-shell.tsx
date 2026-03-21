@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { useAppStore } from "@/shared/lib/store";
@@ -12,6 +13,12 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const theme = useAppStore((s) => s.preferences.theme);
+  const pathname = usePathname();
+
+  // Landing page gets its own full-page layout — no shell
+  if (pathname === "/") {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex min-h-screen bg-content-bg items-stretch" data-theme={theme === "contrast" ? undefined : theme}>
