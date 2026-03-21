@@ -1,10 +1,36 @@
 import type { BrandProfile, VideoAdAnalysis } from "@/shared/types";
-import { buildVideoGenerationPrompt } from "./prompt.ts";
+import type { UploadedAsset } from "@/shared/types";
+import {
+  buildVideoGenerationPromptSpec,
+  buildVideoNegativePrompt,
+  type VideoGenerationPromptSpec,
+} from "./prompt.ts";
 import { summarizeBrandVideoReference } from "./analysis.ts";
-import { buildVideoGenerationParameters, getSupportedVideoAspectRatio } from "./config.ts";
+import {
+  buildVideoGenerationParameters,
+  getSupportedVideoAspectRatio,
+  VIDEO_GENERATION_DURATION_SECONDS,
+} from "./config.ts";
 
 const VEO_MODEL = "veo-3.1-generate-preview";
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+type ProviderReferenceType = "asset" | "style";
+
+interface ProviderReferenceImage {
+  image: {
+    bytesBase64Encoded: string;
+    mimeType: string;
+  };
+  referenceType: ProviderReferenceType;
+}
+
+export interface PreparedVideoGenerationRequest {
+  prompt: string;
+  negativePrompt: string;
+  durationSeconds: number;
+  referenceImages: ProviderReferenceImage[];
+}
 
 export interface VideoGenerationJob {
   jobId: string;
@@ -23,6 +49,62 @@ interface ExtractedGeneratedVideoInfo {
   mimeType: string;
   fileName: string | null;
   inlineData: string | null;
+}
+
+function parseDataUrl(url: string): { mimeType: string; data: string } | null {
+  if (!url.startsWith("data:")) return null;
+  const [header, data] = url.split(",", 2);
+  if (!header || !data) return null;
+  const mimeType = header.match(/^data:(.*?);base64$/)?.[1] || "image/png";
+  return { mimeType, data };
+}
+
+async function assetToReferenceImage(
+  asset: UploadedAsset,
+  referenceType: ProviderReferenceType
+): Promise<ProviderReferenceImage | null> {
+  if (!asset.url) return null;
+
+  const dataUrl = parseDataUrl(asset.url);
+  if (dataUrl) {
+    return {
+      image: {
+        bytesBase64Encoded: dataUrl.data,
+        mimeType: dataUrl.mimeType,
+      },
+      referenceType,
+    };
+  }
+
+  try {
+    const res = await fetch(asset.url);
+    if (!res.ok) return null;
+    const buffer = await res.arrayBuffer();
+    return {
+      image: {
+        bytesBase64Encoded: Buffer.from(buffer).toString("base64"),
+        mimeType: res.headers.get("content-type") || "image/png",
+      },
+      referenceType,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function collectBrandReferenceImages(
+  brandProfile: Pick<BrandProfile, "productImages" | "exampleAds">
+): Promise<ProviderReferenceImage[]> {
+  const selectedAssets: Array<{ asset: UploadedAsset; referenceType: ProviderReferenceType }> = [
+    ...brandProfile.productImages.slice(0, 2).map((asset) => ({ asset, referenceType: "asset" as const })),
+    ...brandProfile.exampleAds.slice(0, 1).map((asset) => ({ asset, referenceType: "style" as const })),
+  ];
+
+  const references = await Promise.all(
+    selectedAssets.map(({ asset, referenceType }) => assetToReferenceImage(asset, referenceType))
+  );
+
+  return references.filter((reference): reference is ProviderReferenceImage => Boolean(reference));
 }
 
 function mapOperationStatus(operation: Record<string, unknown>): VideoJobStatus["status"] {
@@ -56,6 +138,106 @@ async function maybeCollectReferenceInsights(
   return insights.filter(Boolean);
 }
 
+function buildPromptSpec(
+  analysis: VideoAdAnalysis,
+  brandProfile: BrandProfile,
+  aspectRatio: string,
+  customPrompt: string | undefined,
+  referenceVideoInsights: string[]
+): VideoGenerationPromptSpec {
+  if (customPrompt?.trim()) {
+    return {
+      prompt: customPrompt.trim(),
+      negativePrompt: buildVideoNegativePrompt(analysis, brandProfile),
+      durationSeconds: VIDEO_GENERATION_DURATION_SECONDS,
+    };
+  }
+
+  return buildVideoGenerationPromptSpec({
+    analysis,
+    brandProfile,
+    aspectRatio,
+    referenceVideoInsights,
+  });
+}
+
+export async function prepareVideoGenerationRequest(
+  analysis: VideoAdAnalysis,
+  brandProfile: BrandProfile,
+  aspectRatio: string,
+  googleApiKey: string,
+  customPrompt?: string
+): Promise<PreparedVideoGenerationRequest> {
+  const supportedAspectRatio = getSupportedVideoAspectRatio(aspectRatio);
+  const referenceVideoInsights = customPrompt?.trim()
+    ? []
+    : await maybeCollectReferenceInsights(brandProfile, googleApiKey);
+  const promptSpec = buildPromptSpec(
+    analysis,
+    brandProfile,
+    supportedAspectRatio,
+    customPrompt,
+    referenceVideoInsights
+  );
+  const referenceImages = await collectBrandReferenceImages(brandProfile);
+
+  return {
+    prompt: promptSpec.prompt,
+    negativePrompt: promptSpec.negativePrompt,
+    durationSeconds: promptSpec.durationSeconds,
+    referenceImages,
+  };
+}
+
+function buildVideoGenerationPayload(
+  request: PreparedVideoGenerationRequest,
+  aspectRatio: string,
+  includeReferences: boolean
+): Record<string, unknown> {
+  const supportedAspectRatio = getSupportedVideoAspectRatio(aspectRatio);
+  const instance: Record<string, unknown> = {
+    prompt: request.prompt,
+  };
+
+  if (includeReferences && request.referenceImages.length > 0) {
+    instance.referenceImages = request.referenceImages;
+  }
+
+  return {
+    instances: [instance],
+    parameters: {
+      ...buildVideoGenerationParameters(supportedAspectRatio),
+      durationSeconds: request.durationSeconds,
+      negativePrompt: request.negativePrompt,
+    },
+  };
+}
+
+export function shouldRetryWithoutReferences(status: number, body: string): boolean {
+  if (status !== 400) return false;
+  const normalized = body.toLowerCase();
+  return (
+    normalized.includes("referenceimages") ||
+    normalized.includes("reference images") ||
+    normalized.includes("use case is currently not supported") ||
+    normalized.includes("currently not supported")
+  );
+}
+
+async function postVideoGenerationRequest(
+  payload: Record<string, unknown>,
+  googleApiKey: string
+): Promise<Response> {
+  return fetch(`${BASE_URL}/models/${VEO_MODEL}:predictLongRunning`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": googleApiKey,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function startVideoGeneration(
   analysis: VideoAdAnalysis,
   brandProfile: BrandProfile,
@@ -64,32 +246,31 @@ export async function startVideoGeneration(
   customPrompt?: string
 ): Promise<VideoGenerationJob> {
   const supportedAspectRatio = getSupportedVideoAspectRatio(aspectRatio);
-  let prompt = customPrompt;
-  if (!prompt) {
-    const referenceVideoInsights = await maybeCollectReferenceInsights(brandProfile, googleApiKey);
-    prompt = buildVideoGenerationPrompt({
-      analysis,
-      brandProfile,
-      aspectRatio: supportedAspectRatio,
-      referenceVideoInsights,
-    });
-  }
+  const request = await prepareVideoGenerationRequest(
+    analysis,
+    brandProfile,
+    supportedAspectRatio,
+    googleApiKey,
+    customPrompt
+  );
 
-  const res = await fetch(`${BASE_URL}/models/${VEO_MODEL}:predictLongRunning`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": googleApiKey,
-    },
-    body: JSON.stringify({
-      instances: [{ prompt }],
-      parameters: buildVideoGenerationParameters(supportedAspectRatio),
-    }),
-  });
+  const initialPayload = buildVideoGenerationPayload(request, supportedAspectRatio, true);
+  let res = await postVideoGenerationRequest(initialPayload, googleApiKey);
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Veo generation error ${res.status}: ${body}`);
+    if (request.referenceImages.length > 0 && shouldRetryWithoutReferences(res.status, body)) {
+      res = await postVideoGenerationRequest(
+        buildVideoGenerationPayload(request, supportedAspectRatio, false),
+        googleApiKey
+      );
+      if (!res.ok) {
+        const retryBody = await res.text();
+        throw new Error(`Veo generation error ${res.status}: ${retryBody}`);
+      }
+    } else {
+      throw new Error(`Veo generation error ${res.status}: ${body}`);
+    }
   }
 
   const data = await res.json();
@@ -101,7 +282,7 @@ export async function startVideoGeneration(
   return {
     jobId,
     status: mapOperationStatus(data),
-    prompt,
+    prompt: request.prompt,
   };
 }
 

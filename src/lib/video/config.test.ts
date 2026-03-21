@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildVideoGenerationParameters,
   getSupportedVideoAspectRatio,
+  VIDEO_GENERATION_DURATION_SECONDS,
   VIDEO_ASPECT_RATIO_OPTIONS,
 } from "./config.ts";
 
@@ -27,5 +28,6 @@ test("VIDEO_ASPECT_RATIO_OPTIONS only exposes supported Veo ratios", () => {
 test("buildVideoGenerationParameters only includes Veo-supported fields", () => {
   assert.deepEqual(buildVideoGenerationParameters("4:5"), {
     aspectRatio: "9:16",
+    durationSeconds: VIDEO_GENERATION_DURATION_SECONDS,
   });
 });

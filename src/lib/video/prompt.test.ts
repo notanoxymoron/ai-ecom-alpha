@@ -81,12 +81,16 @@ test("buildVideoGenerationPrompt turns analysis into a structured recreation bri
     aspectRatio: "9:16",
   });
 
-  assert.match(prompt, /structured recreation/i);
+  assert.match(prompt, /natural ugc realism/i);
   assert.match(prompt, /Glow Lab/);
-  assert.match(prompt, /before-and-after contrast/i);
-  assert.match(prompt, /Creator close-up/i);
+  assert.match(prompt, /one creator or one product focus/i);
+  assert.match(prompt, /hook \(0-2s\)/i);
+  assert.match(prompt, /creator says: this is the routine i wish i found sooner/i);
+  assert.match(prompt, /use at most 2 anchored static text cards/i);
   assert.match(prompt, /Do not use competitor branding/i);
   assert.match(prompt, /medical fear tactics/i);
+  assert.doesNotMatch(prompt, /Overlay:/);
+  assert.doesNotMatch(prompt, /"Glow in 7 days"/);
 });
 
 test("buildVideoGenerationPrompt includes optional brand video reference insights", () => {
@@ -100,6 +104,7 @@ test("buildVideoGenerationPrompt includes optional brand video reference insight
     ],
   });
 
+  assert.match(prompt, /brand motion cues/i);
   assert.match(prompt, /warm handheld pacing/i);
   assert.match(prompt, /spoken CTA/i);
 });
@@ -134,7 +139,66 @@ test("buildVideoGenerationPrompt preserves music-led audio without inventing voi
     aspectRatio: "9:16",
   });
 
-  assert.match(prompt, /music-led/i);
-  assert.match(prompt, /do not add voiceover/i);
+  assert.match(prompt, /audio feel: music_led/i);
+  assert.match(prompt, /no spoken dialogue/i);
   assert.match(prompt, /upbeat dance track with punchy drop/i);
+  assert.doesNotMatch(prompt, /creator says:/i);
+});
+
+test("buildVideoGenerationPrompt collapses noisy source analysis into a 3-beat arc", () => {
+  const prompt = buildVideoGenerationPrompt({
+    analysis: {
+      ...analysis,
+      sceneBreakdown: [
+        ...analysis.sceneBreakdown,
+        {
+          index: 3,
+          startSeconds: 6,
+          endSeconds: 7,
+          goal: "proof",
+          visuals: "Quick testimonial insert",
+          onScreenText: "Loved by 10k customers",
+          voiceover: "none",
+          transition: "hard cut",
+        },
+        {
+          index: 4,
+          startSeconds: 7,
+          endSeconds: 8,
+          goal: "cta",
+          visuals: "Product and checkout prompt",
+          onScreenText: "Shop now",
+          voiceover: "Grab yours today",
+          transition: "static",
+        },
+      ],
+      replicationBrief: {
+        ...analysis.replicationBrief,
+        shotList: [
+          ...analysis.replicationBrief.shotList,
+          {
+            sequence: 2,
+            visuals: "Serum texture demo",
+            overlayText: "Clinically backed glow",
+            voiceoverLine: "The glow is real",
+            durationSeconds: 2,
+          },
+          {
+            sequence: 3,
+            visuals: "Checkout close",
+            overlayText: "Shop Glow Lab",
+            voiceoverLine: "Grab yours today",
+            durationSeconds: 2,
+          },
+        ],
+      },
+    },
+    brandProfile,
+    aspectRatio: "9:16",
+  });
+
+  assert.equal((prompt.match(/- (Hook|Proof\/demo|CTA) \(/g) ?? []).length, 3);
+  assert.doesNotMatch(prompt, /scene reference/i);
+  assert.doesNotMatch(prompt, /shot list/i);
+  assert.doesNotMatch(prompt, /Transition:/);
 });
