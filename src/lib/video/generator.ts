@@ -93,9 +93,10 @@ async function assetToReferenceImage(
 }
 
 async function collectBrandReferenceImages(
-  brandProfile: Pick<BrandProfile, "productImages" | "exampleAds">
+  brandProfile: Pick<BrandProfile, "productImages" | "exampleAds" | "logoFiles">
 ): Promise<ProviderReferenceImage[]> {
   const selectedAssets: Array<{ asset: UploadedAsset; referenceType: ProviderReferenceType }> = [
+    ...brandProfile.logoFiles.slice(0, 1).map((asset) => ({ asset, referenceType: "style" as const })),
     ...brandProfile.productImages.slice(0, 2).map((asset) => ({ asset, referenceType: "asset" as const })),
     ...brandProfile.exampleAds.slice(0, 1).map((asset) => ({ asset, referenceType: "style" as const })),
   ];
@@ -143,7 +144,8 @@ function buildPromptSpec(
   brandProfile: BrandProfile,
   aspectRatio: string,
   customPrompt: string | undefined,
-  referenceVideoInsights: string[]
+  referenceVideoInsights: string[],
+  additionalInstructions?: string
 ): VideoGenerationPromptSpec {
   if (customPrompt?.trim()) {
     return {
@@ -158,6 +160,7 @@ function buildPromptSpec(
     brandProfile,
     aspectRatio,
     referenceVideoInsights,
+    additionalInstructions,
   });
 }
 
@@ -166,7 +169,8 @@ export async function prepareVideoGenerationRequest(
   brandProfile: BrandProfile,
   aspectRatio: string,
   googleApiKey: string,
-  customPrompt?: string
+  customPrompt?: string,
+  additionalInstructions?: string
 ): Promise<PreparedVideoGenerationRequest> {
   const supportedAspectRatio = getSupportedVideoAspectRatio(aspectRatio);
   const referenceVideoInsights = customPrompt?.trim()
@@ -177,7 +181,8 @@ export async function prepareVideoGenerationRequest(
     brandProfile,
     supportedAspectRatio,
     customPrompt,
-    referenceVideoInsights
+    referenceVideoInsights,
+    additionalInstructions
   );
   const referenceImages = await collectBrandReferenceImages(brandProfile);
 
@@ -243,7 +248,8 @@ export async function startVideoGeneration(
   brandProfile: BrandProfile,
   aspectRatio: string,
   googleApiKey: string,
-  customPrompt?: string
+  customPrompt?: string,
+  additionalInstructions?: string
 ): Promise<VideoGenerationJob> {
   const supportedAspectRatio = getSupportedVideoAspectRatio(aspectRatio);
   const request = await prepareVideoGenerationRequest(
@@ -251,7 +257,8 @@ export async function startVideoGeneration(
     brandProfile,
     supportedAspectRatio,
     googleApiKey,
-    customPrompt
+    customPrompt,
+    additionalInstructions
   );
 
   const initialPayload = buildVideoGenerationPayload(request, supportedAspectRatio, true);

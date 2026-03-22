@@ -29,6 +29,11 @@ import {
   Film,
 } from "lucide-react";
 import Image from "next/image";
+import type { GeneratedAd } from "@/shared/types";
+
+function isVideoAd(ad: GeneratedAd): boolean {
+  return ad.mediaType === "video" || ad.imageUrl.includes("/api/video-remix/");
+}
 
 export default function GeneratePage() {
   const { brandProfile, setAnalysis, incrementUsage, addErrorLog, apiKeys, generatedAds, addGeneratedAd, removeGeneratedAd } = useAppStore();
@@ -149,6 +154,7 @@ export default function GeneratePage() {
         analysis: localAnalysis,
         brandProfile,
         aspectRatio: getSupportedVideoAspectRatio(aspectRatio),
+        additionalInstructions: overrides.additionalInstructions || undefined,
       });
     }
 
@@ -212,6 +218,7 @@ export default function GeneratePage() {
             brandProfile,
             aspectRatio: selectedVideoAspectRatio,
             customPrompt: editedPrompt || undefined,
+            additionalInstructions: overrides.additionalInstructions || undefined,
           }),
         });
         const data = await res.json();
@@ -932,6 +939,7 @@ export default function GeneratePage() {
                           sourceAdId: selectedAd?.id || "",
                           analysisId: localAnalysis ? selectedAd?.id || "" : "",
                           imageUrl: v.assetUrl,
+                          mediaType: v.mediaType,
                           prompt: editedPrompt || "",
                           aspectRatio: v.aspectRatio,
                           variationNumber: i,
@@ -1020,7 +1028,11 @@ export default function GeneratePage() {
                   className="relative aspect-[4/5] rounded-lg overflow-hidden border border-border bg-muted cursor-pointer"
                   onClick={() => setPreviewAd(ad.id)}
                 >
-                  <Image src={ad.imageUrl} alt="" fill className="object-cover" unoptimized />
+                  {isVideoAd(ad) ? (
+                    <video src={ad.imageUrl} muted playsInline className="h-full w-full object-cover bg-black" />
+                  ) : (
+                    <Image src={ad.imageUrl} alt="" fill className="object-cover" unoptimized />
+                  )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                     <Button
                       size="sm"
@@ -1030,7 +1042,7 @@ export default function GeneratePage() {
                         e.stopPropagation();
                         const link = document.createElement("a");
                         link.href = ad.imageUrl;
-                        link.download = `approved-ad-${ad.id}.png`;
+                        link.download = `approved-ad-${ad.id}.${isVideoAd(ad) ? "mp4" : "png"}`;
                         link.click();
                       }}
                     >
@@ -1086,10 +1098,14 @@ export default function GeneratePage() {
                 <X className="h-5 w-5" />
               </Button>
 
-              {/* Image */}
+              {/* Asset */}
               <div className="flex-1 flex items-center justify-center min-h-0">
                 <div className="relative w-full max-w-lg aspect-[4/5] rounded-lg overflow-hidden">
-                  <Image src={ad.imageUrl} alt="" fill className="object-contain" unoptimized />
+                  {isVideoAd(ad) ? (
+                    <video src={ad.imageUrl} controls playsInline className="h-full w-full object-contain bg-black" />
+                  ) : (
+                    <Image src={ad.imageUrl} alt="" fill className="object-contain" unoptimized />
+                  )}
                 </div>
               </div>
 
@@ -1138,7 +1154,7 @@ export default function GeneratePage() {
                       onClick={() => {
                         const link = document.createElement("a");
                         link.href = ad.imageUrl;
-                        link.download = `approved-ad-${ad.id}.png`;
+                        link.download = `approved-ad-${ad.id}.${isVideoAd(ad) ? "mp4" : "png"}`;
                         link.click();
                       }}
                     >

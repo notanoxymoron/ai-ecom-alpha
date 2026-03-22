@@ -5,10 +5,11 @@ interface BuildVideoGenerationPromptParams {
   analysis: VideoAdAnalysis;
   brandProfile: Pick<
     BrandProfile,
-    "brandName" | "brandDescription" | "brandVoice" | "targetAudience" | "usps" | "brandColors" | "excludedThemes"
+    "brandName" | "brandDescription" | "brandVoice" | "targetAudience" | "usps" | "brandColors" | "excludedThemes" | "logoFiles"
   >;
   aspectRatio: string;
   referenceVideoInsights?: string[];
+  additionalInstructions?: string;
 }
 
 export interface VideoGenerationPromptSpec {
@@ -263,6 +264,7 @@ export function buildVideoGenerationPromptSpec({
   brandProfile,
   aspectRatio,
   referenceVideoInsights = [],
+  additionalInstructions,
 }: BuildVideoGenerationPromptParams): VideoGenerationPromptSpec {
   const beats = buildBeats(analysis);
   const { hookCard, ctaCard } = buildTextCards(analysis);
@@ -301,6 +303,9 @@ export function buildVideoGenerationPromptSpec({
     `- Description: ${clipChars(cleanFragment(brandProfile.brandDescription || "No additional description provided"), 120)}`,
     `- Key USPs: ${uspSummary}`,
     `- Brand colors: ${colorSummary}`,
+    brandProfile.logoFiles.length > 0
+      ? `- Brand logo: Provided as a reference image. Incorporate the ${brandProfile.brandName} logo naturally in the video, especially in the CTA/closing beat.`
+      : `- Brand logo: Not provided. Use the brand name "${brandProfile.brandName}" as on-screen text where a logo would appear.`,
     "",
     "Narrative arc:",
     ...beats.map((beat) => `- ${beat.label} (${beat.timing}): ${toSentence(beat.visuals, "Grounded visual.")} Purpose: ${beat.purpose}.`),
@@ -330,6 +335,15 @@ export function buildVideoGenerationPromptSpec({
     `- Avoid these themes: ${excludedThemes}`,
     "- Do not use competitor branding, logos, or exact competitor copy"
   );
+
+  const trimmedInstructions = additionalInstructions?.trim();
+  if (trimmedInstructions) {
+    promptSections.push(
+      "",
+      "Additional instructions (high priority — follow these closely):",
+      trimmedInstructions
+    );
+  }
 
   return {
     prompt: promptSections.join("\n"),

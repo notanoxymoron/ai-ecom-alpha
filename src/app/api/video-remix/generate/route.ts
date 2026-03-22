@@ -7,11 +7,12 @@ export const maxDuration = 120;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { analysis, brandProfile, aspectRatio, customPrompt } = body as {
+    const { analysis, brandProfile, aspectRatio, customPrompt, additionalInstructions } = body as {
       analysis: VideoAdAnalysis;
       brandProfile: BrandProfile;
       aspectRatio?: string;
       customPrompt?: string;
+      additionalInstructions?: string;
     };
 
     if (!analysis || analysis.mediaType !== "video") {
@@ -32,7 +33,8 @@ export async function POST(request: NextRequest) {
       brandProfile,
       aspectRatio || "9:16",
       googleApiKey,
-      customPrompt
+      customPrompt,
+      additionalInstructions
     );
     return NextResponse.json({ data: job });
   } catch (error) {
