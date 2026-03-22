@@ -138,7 +138,7 @@ export default function LandingPage() {
     };
   }, []);
 
-  const goToDashboard = () => router.push("/dashboard");
+  const goToDashboard = () => router.push("/knowledge-base");
   const toggleFaq = (i: number) =>
     setOpenFaq((prev) => (prev === i ? null : i));
 
@@ -186,23 +186,12 @@ export default function LandingPage() {
           </h1>
           <p className="hero-sub">
             Save ads from anywhere. Track every competitor move. Analyze what
-            makes them win — then generate better versions with AI. All in one
-            place.
+            makes them win — then generate better versions with AI.
+            <br />All in one place.
           </p>
           <div className="hero-actions">
             <button className="btn-primary" onClick={goToDashboard}>
               Start for free ✨
-            </button>
-            <button className="btn-outline" onClick={goToDashboard}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-              Try the demo
             </button>
           </div>
           <div className="hero-trust">
@@ -270,25 +259,33 @@ export default function LandingPage() {
                     <div className="msb-icon" />
                     <span className="msb-brand">Genie OS</span>
                   </div>
+                  <div className="msb-section-label">WORKSPACE</div>
                   <div className="msb-nav">
                     <div className="msb-dot" />
-                    Dashboard
+                    Branding
                   </div>
                   <div className="msb-nav">
                     <div className="msb-dot" />
                     Discover
+                    <span className="msb-badge">100M+</span>
                   </div>
                   <div className="msb-nav">
                     <div className="msb-dot" />
-                    Knowledge Base
+                    Analyze
                   </div>
+                  <div className="msb-nav">
+                    <div className="msb-dot" />
+                    Generate
+                    <span className="msb-badge">AI</span>
+                  </div>
+                  <div className="msb-section-label">INTELLIGENCE</div>
                   <div className="msb-nav active">
                     <div className="msb-dot" />
                     Analytics
                   </div>
                   <div className="msb-nav">
                     <div className="msb-dot" />
-                    Generate
+                    Openclaw
                   </div>
                 </div>
                 {/* Main */}
@@ -1427,12 +1424,6 @@ export default function LandingPage() {
               <button className="btn-white" onClick={goToDashboard}>
                 Start for free — it&apos;s on us 🎉
               </button>
-              <button className="btn-white-outline" onClick={goToDashboard}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-                Try the demo
-              </button>
             </div>
             <p className="cta-note">
               No credit card · Takes 2 minutes · Cancel anytime
@@ -1465,7 +1456,7 @@ export default function LandingPage() {
                   <Link href="/knowledge-base">Track Competitors</Link>
                 </li>
                 <li>
-                  <Link href="/dashboard">AI Analysis</Link>
+                  <Link href="/discover">AI Analysis</Link>
                 </li>
                 <li>
                   <Link href="/generate">Generate</Link>

@@ -19,15 +19,15 @@ import { useAppStore } from "@/shared/lib/store";
 import { GoldRing } from "@/shared/components/gold-ring";
 
 const mainNavItems = [
+  { href: "/knowledge-base", label: "Branding", icon: BookMarked },
   { href: "/discover", label: "Discover", icon: Search, badge: "100M+" },
   { href: "/analyze", label: "Analyze", icon: LayoutDashboard },
   { href: "/generate", label: "Generate", icon: Zap, badge: "AI" },
 ];
 
 const intelligenceNavItems = [
-  { href: "/knowledge-base", label: "Branding", icon: BookMarked },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/teardown", label: "Openclaw", icon: Bot },
+  { href: "/openclaw", label: "Openclaw", icon: Bot },
 ];
 
 const platforms = [
@@ -64,7 +64,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
   return (
     <aside className="top-0 sticky flex flex-col bg-sidebar-bg border-sidebar-border border-r w-full h-screen overflow-hidden">
       {/* ── Brand ── */}
-      <div className={cn(
+      <Link href="/" className={cn(
         "flex items-center border-sidebar-border border-b shrink-0 transition-all duration-200",
         collapsed ? "justify-center px-3 py-[19px]" : "gap-3 px-6 py-[19px]",
       )}>
@@ -92,7 +92,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
             </div>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* ── Nav ── */}
       <nav className={cn("flex-1 py-4 overflow-y-auto", collapsed ? "px-2" : "px-3")}>

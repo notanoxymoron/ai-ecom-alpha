@@ -6,7 +6,7 @@ import type { TeardownRequest, TeardownProgress, TeardownReport } from "../types
 export function useStartTeardown() {
   return useMutation({
     mutationFn: async (request: TeardownRequest) => {
-      const res = await fetch("/api/teardown/start", {
+      const res = await fetch("/api/openclaw/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
@@ -24,7 +24,7 @@ export function useTeardownProgress(id: string | null) {
   return useQuery<TeardownProgress>({
     queryKey: ["teardown-progress", id],
     queryFn: async () => {
-      const res = await fetch(`/api/teardown/status?id=${id}`);
+      const res = await fetch(`/api/openclaw/status?id=${id}`);
       if (!res.ok) throw new Error("Failed to fetch teardown status");
       return res.json();
     },
@@ -42,7 +42,7 @@ export function useTeardownReport(id: string | null, enabled: boolean) {
   return useQuery<TeardownReport>({
     queryKey: ["teardown-report", id],
     queryFn: async () => {
-      const res = await fetch(`/api/teardown/report?id=${id}`);
+      const res = await fetch(`/api/openclaw/report?id=${id}`);
       if (!res.ok) throw new Error("Failed to fetch teardown report");
       return res.json();
     },

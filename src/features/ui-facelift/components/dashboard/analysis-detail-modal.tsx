@@ -9,6 +9,7 @@ interface AnalysisDetailModalProps {
   analysis: ImageAdAnalysis;
   onClose: () => void;
   imageUrl?: string;
+  videoUrl?: string;
   description?: string;
   runningDays?: number;
   platforms?: string[];
@@ -62,8 +63,8 @@ function Tag({ children, variant }: { children: React.ReactNode; variant?: "mono
   );
 }
 
-export function AnalysisDetailModal({ name, analysis, onClose, imageUrl, description, runningDays, platforms }: AnalysisDetailModalProps) {
-  const hasImage = !!imageUrl;
+export function AnalysisDetailModal({ name, analysis, onClose, imageUrl, videoUrl, description, runningDays, platforms }: AnalysisDetailModalProps) {
+  const hasMedia = !!imageUrl || !!videoUrl;
 
   return (
     <div
@@ -71,7 +72,7 @@ export function AnalysisDetailModal({ name, analysis, onClose, imageUrl, descrip
       onClick={onClose}
     >
       <div
-        className={`bg-card-bg border border-border-default rounded-xl w-full ${hasImage ? "max-w-[960px]" : "max-w-[560px]"} max-h-[90vh] overflow-y-auto`}
+        className={`bg-card-bg border border-border-default rounded-xl w-full ${hasMedia ? "max-w-[960px]" : "max-w-[560px]"} max-h-[90vh] overflow-y-auto`}
         style={{ animation: "modal-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -90,13 +91,24 @@ export function AnalysisDetailModal({ name, analysis, onClose, imageUrl, descrip
         </div>
 
         {/* Body */}
-        <div className={`p-5 ${hasImage ? "grid grid-cols-1 sm:grid-cols-2 gap-6" : "flex flex-col gap-3"}`}>
-          {/* Left: Ad preview (only when image is available) */}
-          {hasImage && (
+        <div className={`p-5 ${hasMedia ? "grid grid-cols-1 sm:grid-cols-2 gap-6" : "flex flex-col gap-3"}`}>
+          {/* Left: Ad preview (image or video) */}
+          {hasMedia && (
             <div className="flex flex-col gap-4">
-              <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-content-bg">
-                <Image src={imageUrl} alt="" fill className="object-cover" unoptimized />
-              </div>
+              {videoUrl ? (
+                <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-content-bg">
+                  <video
+                    src={videoUrl}
+                    poster={imageUrl}
+                    controls
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : imageUrl ? (
+                <div className="relative aspect-[4/5] rounded-lg overflow-hidden bg-content-bg">
+                  <Image src={imageUrl} alt="" fill className="object-cover" unoptimized />
+                </div>
+              ) : null}
               {description && (
                 <p className="text-[13px] text-text-secondary leading-relaxed">{description}</p>
               )}

@@ -3,7 +3,7 @@
 import React from "react";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Card } from "@/shared/components/ui/card";
-import { getWinnerTier, getWinnerTierLabel } from "@/shared/types";
+import { getWinnerTier, getWinnerTierLabel, getWinnerTierColor } from "@/shared/types";
 import type { ForeplayAd } from "@/shared/types/foreplay";
 import { useAppStore } from "@/shared/lib/store";
 import { getAdMediaType } from "@/shared/lib/media";
@@ -30,6 +30,7 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate, variant }: A
   const days = ad.live && ad.started_running
     ? Math.floor((Date.now() - new Date(ad.started_running).getTime()) / 86_400_000)
     : (ad.running_duration?.days ?? 0);
+  const tier = getWinnerTier(days);
   const imageUrl = ad.image || ad.thumbnail;
   const hasVideo = !!ad.video;
   const mediaType = getAdMediaType(ad);
@@ -159,6 +160,16 @@ export function AdCard({ ad, analysisScore, onAnalyze, onDuplicate, variant }: A
           </div>
         )}
       </div>
+
+      {/* ── Winner badge ────────────────────────────────────────────────── */}
+      {tier && (
+        <div className="px-3 pb-2">
+          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${getWinnerTierColor(tier)}`}>
+            {tier === "proven" ? <Trophy size={11} /> : tier === "strong" ? <TrendingUp size={11} /> : <Zap size={11} />}
+            {getWinnerTierLabel(tier)}
+          </span>
+        </div>
+      )}
 
       {/* ── 2. Ad Copy ──────────────────────────────────────────────────────── */}
       {adCopy && (

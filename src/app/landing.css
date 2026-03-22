@@ -221,6 +221,9 @@
 }
 .lp-root .msb-nav.active { background: rgba(124,58,237,0.2); color: #C4B5FD; }
 .lp-root .msb-dot { width: 14px; height: 14px; border-radius: 4px; background: currentColor; opacity: 0.6; flex-shrink: 0; }
+.lp-root .msb-section-label { font-size: 8px; color: rgba(255,255,255,0.25); letter-spacing: 0.08em; font-weight: 600; padding: 8px 8px 4px; }
+.lp-root .msb-section-label:first-child { padding-top: 0; }
+.lp-root .msb-badge { margin-left: auto; font-size: 8px; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.35); padding: 1px 6px; border-radius: 10px; font-family: monospace; font-weight: 500; }
 
 /* Mock main area */
 .lp-root .mock-main {

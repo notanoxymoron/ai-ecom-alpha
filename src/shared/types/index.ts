@@ -171,6 +171,7 @@ export interface GeneratedAd {
   sourceAdId: string;
   analysisId: string;
   imageUrl: string;
+  mediaType?: "image" | "video";
   prompt: string;
   aspectRatio: string;
   variationNumber: number;

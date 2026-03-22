@@ -1,6 +1,8 @@
 import { Star } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/shared/lib/utils";
 import type { AdAnalysis, ImageAdAnalysis } from "@/shared/types";
+import type { ForeplayAd } from "@/shared/types/foreplay";
 import { isImageAnalysis } from "@/shared/lib/media";
 
 // ─── Demo data (used when useDemoData=true or no real analyses exist) ─────────
@@ -15,6 +17,8 @@ const MOCK_ADS = [
 interface TopAdsListProps {
   /** Real analyses from useAppStore, keyed by adId */
   analyses?: Record<string, AdAnalysis>;
+  /** Saved ads for thumbnail display */
+  savedAds?: Record<string, ForeplayAd>;
   /** When true, always render mock data regardless of real data */
   useDemoData?: boolean;
   /** Called when a real ad row is clicked */
@@ -27,7 +31,7 @@ function scoreClasses(score: number) {
   return "bg-losing-bg text-losing-text";
 }
 
-export function TopAdsList({ analyses = {}, useDemoData = false, onAdClick }: TopAdsListProps) {
+export function TopAdsList({ analyses = {}, savedAds = {}, useDemoData = false, onAdClick }: TopAdsListProps) {
   const hasRealData = !useDemoData && Object.keys(analyses).length > 0;
 
   // ── Empty state (no demo, no analyses yet) ────────────────────────────────
@@ -112,10 +116,19 @@ export function TopAdsList({ analyses = {}, useDemoData = false, onAdClick }: To
             onClick={() => analysis && isImageAnalysis(analysis) && onAdClick?.(adId, analysis, name)}
             className="flex items-center gap-3 p-2.5 bg-content-bg rounded-md cursor-pointer transition-colors duration-100 hover:bg-[#EFEEEB]"
           >
-            {/* Score-tinted icon — thumbnail not stored in AdAnalysis */}
-            <div className={cn("w-11 h-11 rounded-sm shrink-0 flex items-center justify-center", cls)}>
-              <Star size={20} className="opacity-50" />
-            </div>
+            {(() => {
+              const ad = savedAds[adId];
+              const thumb = ad?.image || ad?.thumbnail;
+              return thumb ? (
+                <div className="w-11 h-11 rounded-[6px] shrink-0 overflow-hidden relative bg-content-bg">
+                  <Image src={thumb} alt="" fill className="object-cover" unoptimized />
+                </div>
+              ) : (
+                <div className={cn("w-11 h-11 rounded-[6px] shrink-0 flex items-center justify-center", cls)}>
+                  <Star size={20} className="opacity-50" />
+                </div>
+              );
+            })()}
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-medium text-text-primary truncate">{name}</div>
               {meta && (

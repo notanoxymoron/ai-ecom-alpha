@@ -211,6 +211,7 @@ export default function AnalyticsDashboard() {
         <Panel title="Top analyzed ads" icon={Star}>
           <TopAdsList
             analyses={analyses}
+            savedAds={savedAds}
             useDemoData={useDemoData}
             onAdClick={(adId, analysis, name) => setSelectedAnalysis({ adId, analysis, name })}
           />
@@ -227,6 +228,7 @@ export default function AnalyticsDashboard() {
           analysis={selectedAnalysis.analysis}
           onClose={() => setSelectedAnalysis(null)}
           imageUrl={ad?.image || ad?.thumbnail || undefined}
+          videoUrl={ad?.video || undefined}
           description={ad?.description}
           runningDays={ad?.running_duration?.days}
           platforms={ad?.publisher_platform}

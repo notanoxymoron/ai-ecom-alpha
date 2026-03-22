@@ -60,9 +60,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${jetbrainsMono.variable} ${instrumentSans.variable} ${instrumentSerif.variable} ${plusJakartaSans.variable}`}
+      className={`dark ${dmSans.variable} ${jetbrainsMono.variable} ${instrumentSans.variable} ${instrumentSerif.variable} ${plusJakartaSans.variable}`}
     >
-      <body className="antialiased">
+      <body className="antialiased" suppressHydrationWarning>
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>
